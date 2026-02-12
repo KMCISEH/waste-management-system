@@ -33,6 +33,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Waste Management API is running", "environment": os.environ.get("RENDER", "local")}
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "healthy"}
+
 @app.get("/api/records")
 def get_records():
     conn = get_db_conn()
