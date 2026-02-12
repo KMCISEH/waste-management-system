@@ -22,7 +22,7 @@ const APP = {
   get apiBase() {
     return ["localhost", "127.0.0.1"].includes(window.location.hostname)
       ? "" // 로컬 환경에서는 상대 경로 사용 (server.py가 서빙)
-      : "https://waste-management-system-tkkn.onrender.com"; // 배포 환경(Firebase)에서는 Render 백엔드 사용
+      : "https://waste-api-3j2l.onrender.com"; // 배포 환경: 사용자 제공 Render 백엔드 사용
   },
 };
 
