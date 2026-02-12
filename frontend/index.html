@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>폐기물 관리 시스템 | KMCI 안전환경팀</title>
+    <meta
+      name="description"
+      content="지정폐기물 전자인계서 관리 및 배차/처리일정 관리 시스템"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="styles.css?v=1.1" />
+  </head>
+  <body>
+    <!-- 사이드바 네비게이션 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-text">
+            <h1>폐기물 관리시스템</h1>
+            <span class="logo-sub">KMCI 안전환경팀</span>
+          </div>
+        </div>
+      </div>
+      <nav class="nav-menu">
+        <a href="#dashboard" class="nav-item active" data-page="dashboard">
+          <i class="fas fa-chart-pie"></i>
+          <span>대시보드</span>
+        </a>
+        <a href="#records" class="nav-item" data-page="records">
+          <i class="fas fa-clipboard-list"></i>
+          <span>인계서 이력</span>
+        </a>
+        <a href="#stats" class="nav-item" data-page="stats">
+          <i class="fas fa-chart-bar"></i>
+          <span>통계 분석</span>
+        </a>
+        <a href="#liquid-waste" class="nav-item" data-page="liquid-waste">
+          <i class="fas fa-flask"></i>
+          <span>팀별 액상폐기물</span>
+        </a>
+        <a href="#schedule" class="nav-item" data-page="schedule">
+          <i class="fas fa-truck"></i>
+          <span>배차/일정 관리</span>
+          <span class="nav-badge" id="pendingBadge">0</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="theme-toggle" id="themeToggle">
+          <i class="fas fa-moon"></i>
+          <span>다크 모드</span>
+        </div>
+        <div class="last-sync">
+          <i class="fas fa-sync-alt"></i>
+          <span id="lastSync">최근 동기화: -</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 메인 컨텐츠 -->
+    <main class="main-content" id="mainContent">
+      <!-- 상단 헤더 -->
+      <header class="top-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" id="mobileMenuBtn">
+            <i class="fas fa-bars"></i>
+          </button>
+          <div class="breadcrumb" id="breadcrumb">
+            <span>홈</span>
+            <i class="fas fa-chevron-right"></i>
+            <span>대시보드</span>
+          </div>
+        </div>
+
+        <!-- 중앙 로고 배치 -->
+        <div class="header-center">
+          <div class="main-logo-container">
+            <img
+              src="KMCI CI/logo_dark.png"
+              alt="KMCI Logo Dark"
+              class="main-logo logo-dark"
+            />
+            <img
+              src="KMCI CI/logo_light.png"
+              alt="KMCI Logo Light"
+              class="main-logo logo-light"
+            />
+          </div>
+        </div>
+
+        <div class="header-right">
+          <div class="header-date">
+            <i class="fas fa-calendar-alt"></i>
+            <span id="currentDate"></span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ===== 대시보드 페이지 ===== -->
+      <section class="page active" id="page-dashboard">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">
+              <i class="fas fa-chart-pie"></i> 대시보드
+            </h2>
+            <p class="page-desc">폐기물 관리 현황을 한눈에 파악합니다</p>
+          </div>
+          <div class="dashboard-controls">
+            <select id="dashboardYear" class="chart-select"></select>
+            <select id="dashboardMonth" class="chart-select">
+              <option value="all">전체</option>
+              <option value="01">1월</option>
+              <option value="02">2월</option>
+              <option value="03">3월</option>
+              <option value="04">4월</option>
+              <option value="05">5월</option>
+              <option value="06">6월</option>
+              <option value="07">7월</option>
+              <option value="08">8월</option>
+              <option value="09">9월</option>
+              <option value="10">10월</option>
+              <option value="11">11월</option>
+              <option value="12">12월</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 통계 카드 -->
+        <div class="stats-grid">
+          <div class="stat-card stat-total">
+            <div class="stat-icon"><i class="fas fa-file-alt"></i></div>
+            <div class="stat-info">
+              <span class="stat-label">총 처리 건수</span>
+              <span class="stat-value" id="statTotal">0</span>
+            </div>
+            <div class="stat-trend up">
+              <i class="fas fa-arrow-up"></i>
+              <span id="statTotalTrend">-</span>
+            </div>
+          </div>
+          <div class="stat-card stat-amount">
+            <div class="stat-icon"><i class="fas fa-weight-hanging"></i></div>
+            <div class="stat-info">
+              <span class="stat-label">총 처리량</span>
+              <span class="stat-value"
+                ><span id="statAmount">0</span> <small>톤</small></span
+              >
+            </div>
+          </div>
+
+          <div class="stat-card stat-drum">
+            <div class="stat-icon"><i class="fas fa-drum-steelpan"></i></div>
+            <div class="stat-info">
+              <span class="stat-label">폐공드럼 누계</span>
+              <span class="stat-value" id="statDrum">0</span>
+            </div>
+          </div>
+          <div class="stat-card stat-ibc">
+            <div class="stat-icon"><i class="fas fa-cubes"></i></div>
+            <div class="stat-info">
+              <span class="stat-label">폐IBC 누계</span>
+              <span class="stat-value" id="statIBC">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 차트 영역 -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3>월별 처리 추이</h3>
+              <select id="chartYearSelect" class="chart-select"></select>
+            </div>
+            <div class="chart-body">
+              <canvas id="monthlyChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3>폐기물 종류별 비율</h3>
+            </div>
+            <div class="chart-body chart-body-doughnut">
+              <canvas id="wasteTypeChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card full-width">
+            <div class="chart-header">
+              <h3>처리업체별 처리량</h3>
+            </div>
+            <div class="chart-body" style="height: 300px">
+              <canvas id="processorChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 최근 처리 내역 -->
+        <div class="recent-card">
+          <div class="chart-header">
+            <h3><i class="fas fa-history"></i> 최근 처리 내역</h3>
+            <a href="#records" class="btn-link" data-page="records"
+              >전체 보기 →</a
+            >
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>처리일</th>
+                  <th>전표번호</th>
+                  <th>폐기물명</th>
+                  <th>처리량</th>
+                  <th>처리업체</th>
+                  <th>상태</th>
+                </tr>
+              </thead>
+              <tbody id="recentTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 배차/일정 관리 페이지 ===== -->
+      <!-- ===== 인계서 이력 페이지 ===== -->
+      <section class="page" id="page-records">
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">
+              <i class="fas fa-clipboard-list"></i> 전자인계서 이력
+            </h2>
+            <p class="page-desc">전자인계서 처리 이력을 검색하고 관리합니다</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-ghost" id="btnExportExcelRecords">
+              <i class="fas fa-file-excel"></i> 엑셀 내보내기
+            </button>
+          </div>
+        </div>
+
+        <!-- 검색/필터 바 -->
+        <div class="filter-bar">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="전표번호, 폐기물명, 업체명 검색..."
+            />
+          </div>
+          <div class="filter-group">
+            <select
+              id="quickYear"
+              class="filter-select"
+              style="font-weight: bold; color: var(--primary)"
+            ></select>
+            <select id="quickMonth" class="filter-select">
+              <option value="">전체 월</option>
+              <option value="01">1월</option>
+              <option value="02">2월</option>
+              <option value="03">3월</option>
+              <option value="04">4월</option>
+              <option value="05">5월</option>
+              <option value="06">6월</option>
+              <option value="07">7월</option>
+              <option value="08">8월</option>
+              <option value="09">9월</option>
+              <option value="10">10월</option>
+              <option value="11">11월</option>
+              <option value="12">12월</option>
+            </select>
+            <select id="filterWasteType" class="filter-select">
+              <option value="">전체 폐기물</option>
+            </select>
+            <select id="filterProcessor" class="filter-select">
+              <option value="">전체 업체</option>
+            </select>
+            <input
+              type="date"
+              id="filterDateFrom"
+              class="filter-date"
+              title="시작일"
+            />
+            <input
+              type="date"
+              id="filterDateTo"
+              class="filter-date"
+              title="종료일"
+            />
+            <button class="btn btn-secondary" id="btnExportExcel">
+              <i class="fas fa-file-export"></i> 엑셀 내보내기
+            </button>
+            <button class="btn btn-info" id="btnImportExcel">
+              <i class="fas fa-file-import"></i> 엑셀 가져오기
+            </button>
+            <input
+              type="file"
+              id="excelFileInput"
+              style="display: none"
+              accept=".xlsx, .xls, .csv"
+            />
+          </div>
+        </div>
+
+        <!-- 데이터 테이블 -->
+        <div class="table-card" id="dropZone">
+          <div class="drop-zone-overlay">
+            <div class="drop-zone-content">
+              <i class="fas fa-file-upload"></i>
+              <p>파일을 여기에 끌어다 놓으세요</p>
+              <span>(Excel, CSV 지원)</span>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table" id="recordsTable">
+              <thead>
+                <tr>
+                  <th data-sort="date" class="sortable">
+                    처리일 <i class="fas fa-sort"></i>
+                  </th>
+                  <th data-sort="slipNo" class="sortable">
+                    전표번호 <i class="fas fa-sort"></i>
+                  </th>
+                  <th data-sort="wasteName">폐기물명</th>
+                  <th data-sort="amount" class="sortable">
+                    처리량 <i class="fas fa-sort"></i>
+                  </th>
+                  <th>차량번호</th>
+                  <th data-sort="processor">처리업체</th>
+                  <th>처리방법</th>
+                  <th>비고</th>
+                  <th>장소</th>
+                  <th>관리</th>
+                </tr>
+                <tr class="col-filter-row">
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="date"
+                      id="colFilterDate"
+                    >
+                      <option value="">전체일</option>
+                    </select>
+                  </th>
+                  <th>
+                    <input
+                      type="text"
+                      class="col-filter"
+                      data-col="slipNo"
+                      placeholder="검색.."
+                    />
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="wasteName"
+                      id="colFilterWasteName"
+                    >
+                      <option value="">전체 폐기물</option>
+                    </select>
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="amount"
+                      id="colFilterAmount"
+                    >
+                      <option value="">전체</option>
+                    </select>
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="vehicle"
+                      id="colFilterVehicle"
+                    >
+                      <option value="">전체 차량</option>
+                    </select>
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="processor"
+                      id="colFilterProcessor"
+                    >
+                      <option value="">전체 업체</option>
+                    </select>
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="note"
+                      id="colFilterNote"
+                    >
+                      <option value="">전체 방법</option>
+                    </select>
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="category"
+                      id="colFilterCategory"
+                    >
+                      <option value="">전체 비고</option>
+                    </select>
+                  </th>
+                  <th>
+                    <select
+                      class="col-filter"
+                      data-col="location"
+                      id="colFilterLocation"
+                    >
+                      <option value="">전체 장소</option>
+                    </select>
+                  </th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="recordsBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </section>
+
+      <!-- ===== 통계 분석 페이지 ===== -->
+      <section class="page" id="page-stats">
+        <div class="page-header">
+          <h2 class="page-title">
+            <i class="fas fa-chart-bar"></i>
+            통계 분석
+          </h2>
+          <p class="page-desc">
+            기간별, 종류별, 업체별 폐기물 처리 통계를 분석합니다
+          </p>
+        </div>
+
+        <!-- 기간 선택 -->
+        <div class="stats-filter-bar">
+          <div class="period-tabs">
+            <button class="period-tab active" data-period="monthly">
+              월별
+            </button>
+            <button class="period-tab" data-period="quarterly">분기별</button>
+            <button class="period-tab" data-period="yearly">연별</button>
+          </div>
+          <select id="statsYear" class="filter-select"></select>
+        </div>
+
+        <!-- 통계 카드 그리드 -->
+        <div class="stats-detail-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3>재활용/소각/매립 현황</h3>
+            </div>
+            <div class="chart-body">
+              <canvas id="statsDailyTypeChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3>누적 처리량 추이</h3>
+            </div>
+            <div class="chart-body">
+              <canvas id="statsCumulativeChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <!-- 폐기물별 월간 추이 그리드 -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <h3>폐기물별 월간 추이</h3>
+          </div>
+        </div>
+
+        <div class="stats-detail-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">폐공드럼 (개)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailDrum"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">폐IBC (개)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailIbc"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">AO-Tar (톤)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailAoTar"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">메탄올 (톤)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailMethanol"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">유해화학물질 (고상, 톤)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailSolid"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">유해화학물질 (액상, 톤)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailLiquid"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h4 style="font-size: 14px">기타 (톤)</h4>
+            </div>
+            <div class="chart-body" style="height: 200px">
+              <canvas id="statsDetailEtc"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 요약 테이블 -->
+        <div class="table-card">
+          <div class="chart-header">
+            <h3><i class="fas fa-table"></i> 기간별 상세 통계</h3>
+            <button class="btn btn-secondary" id="btnExportStats">
+              <i class="fas fa-download"></i> CSV 내보내기
+            </button>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr id="statsTableHeader"></tr>
+              </thead>
+              <tbody id="statsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 팀별 액상폐기물 관리 -->
+      <section class="page" id="page-liquid-waste">
+        <div class="page-header">
+          <h2>팀별 액상폐기물 관리</h2>
+          <div class="header-actions">
+            <select id="lwMonthSelect" class="form-select">
+              <!-- JS에서 동적으로 채움 -->
+            </select>
+            <button
+              class="btn btn-secondary btn-sm"
+              id="btnExportLwSummary"
+              title="요약 테이블 엑셀 내보내기"
+            >
+              <i class="fas fa-file-download"></i> MT 추출
+            </button>
+          </div>
+        </div>
+
+        <!-- 통계 카드 -->
+        <div
+          class="stats-cards lw-stats-row"
+          style="grid-template-columns: repeat(3, 1fr)"
+        >
+          <div class="stat-card mini">
+            <div class="stat-info">
+              <span class="stat-label">누적 배출량</span>
+              <div class="stat-value-group">
+                <span class="stat-number" id="lwTotalAmount">0</span>
+                <span class="stat-unit">MT</span>
+              </div>
+            </div>
+          </div>
+          <div class="stat-card mini">
+            <div class="stat-info">
+              <span class="stat-label">배출 팀 수</span>
+              <div class="stat-value-group">
+                <span class="stat-number" id="lwTeamCount">0</span>
+                <span class="stat-unit">팀</span>
+              </div>
+            </div>
+          </div>
+          <div class="stat-card mini">
+            <div class="stat-info">
+              <span class="stat-label">데이터 기간</span>
+              <div class="stat-value-group">
+                <span class="stat-number" id="lwMonthCount">0</span>
+                <span class="stat-unit">개월</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. 월별 배출량 (MT) - 요약 테이블 -->
+        <div class="recent-card">
+          <div class="chart-header">
+            <h3>월별 배출량 (MT)</h3>
+          </div>
+          <div class="table-container">
+            <table class="data-table lw-table" id="lwSummaryTable">
+              <thead id="lwSummaryHead"></thead>
+              <tbody id="lwSummaryBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 2. 월별 배출량 그래프 (MT) -->
+        <div class="chart-card" style="margin-top: 20px">
+          <div class="chart-header">
+            <h3>월별 배출량 그래프 (MT)</h3>
+          </div>
+          <div class="chart-body" style="height: 320px">
+            <canvas id="lwTeamMonthlyChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 3. 선택 월 팀별 배출량 (MT) - 상세 내역 -->
+        <div class="recent-card" style="margin-top: 20px">
+          <div class="chart-header">
+            <h3 id="lwDetailTitle">팀별 배출량 (MT)</h3>
+          </div>
+          <div class="table-container">
+            <table class="data-table lw-table">
+              <thead>
+                <tr>
+                  <th>배출일</th>
+                  <th>반입일</th>
+                  <th>종류</th>
+                  <th>내용물(기재내용)</th>
+                  <th>배출부서</th>
+                  <th>배출자</th>
+                  <th>반입수량(EA)</th>
+                  <th>반입량(kg)</th>
+                </tr>
+              </thead>
+              <tbody id="lwDetailTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 4. 선택 월 팀별 배출량 그래프 (MT) -->
+        <div class="chart-card" style="margin-top: 20px">
+          <div class="chart-header">
+            <h3 id="lwPieTitle">팀별 배출량 그래프 (MT)</h3>
+          </div>
+          <div class="chart-body" style="height: 400px; padding: 20px">
+            <canvas id="lwTeamPieChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 드래그 앤 드롭 영역 (최하단) -->
+        <div id="lwDropZone" class="upload-drop-zone" style="margin-top: 40px">
+          <div class="drop-zone-content">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>신규 데이터 업로드</p>
+            <span>엑셀 파일을 여기에 끌어다 놓으세요 (.xlsx, .xls)</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-schedule">
+        <div class="page-header">
+          <h2 class="page-title">
+            <i class="fas fa-truck"></i>
+            배차 / 일정 관리
+          </h2>
+          <div class="calendar-controls">
+            <button class="btn btn-secondary" id="btnPrevMonth">
+              <i class="fas fa-chevron-left"></i>
+            </button>
+            <h3 class="calendar-title" id="calendarTitle">2026년 2월</h3>
+            <button class="btn btn-secondary" id="btnNextMonth">
+              <i class="fas fa-chevron-right"></i>
+            </button>
+            <button class="btn btn-ghost" id="btnToday">오늘</button>
+          </div>
+        </div>
+
+        <!-- 캘린더 메인 -->
+        <div class="calendar-container">
+          <div class="calendar-header">
+            <div class="weekday sun">일</div>
+            <div class="weekday">월</div>
+            <div class="weekday">화</div>
+            <div class="weekday">수</div>
+            <div class="weekday">목</div>
+            <div class="weekday">금</div>
+            <div class="weekday sat">토</div>
+          </div>
+          <div class="calendar-grid" id="calendarGrid">
+            <!-- JS로 날짜 생성 -->
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 모달 -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal" id="modal">
+        <div class="modal-header">
+          <h3 id="modalTitle"></h3>
+          <button class="modal-close" id="modalClose">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer" id="modalFooter"></div>
+      </div>
+    </div>
+
+    <!-- 토스트 알림 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
