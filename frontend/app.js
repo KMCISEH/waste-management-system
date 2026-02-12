@@ -47,6 +47,7 @@ async function loadData() {
     if (!recordsRes.ok || !masterRes.ok) throw new Error("API 연동 실패");
 
     const rawRecords = await recordsRes.json();
+    console.log("Records loaded:", rawRecords.length);
     APP.records = rawRecords.map((r) => ({
       id: r.id,
       slipNo: r.slip_no,
@@ -69,8 +70,9 @@ async function loadData() {
     populateColumnFilters();
     initDashboard(); // 대시보드 초기화 추가
   } catch (e) {
-    console.error("데이터 로딩 실패:", e);
-    showToast("서버 연결 실패. server.py를 실행하세요.", "error");
+    console.error("데이터 로딩 실패 상세:", e);
+    showToast(`서버 연결 실패 (${APP.apiBase || 'Local'}): ${e.message}`, "error");
+    document.getElementById("lastSync").textContent = "연결 실패 (Console 확인)";
   }
 }
 
