@@ -25,9 +25,17 @@ app = FastAPI(title="지정폐기물 관리 시스템 API")
 # 보안 미들웨어 비활성화 - Render 사이트에서 직접 데이터 관리 허용
 
 # CORS 설정 추가 (브라우저 연결 안정성 확보)
+# allow_credentials=True일 경우 allow_origins=["*"]는 브라우저에서 차단될 수 있으므로 명시적 주소 사용
+origins = [
+    "https://waste-management-ee09a.web.app",
+    "https://waste-management-ee09a.firebaseapp.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
