@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles  # type: ignore
 from fastapi.responses import StreamingResponse, JSONResponse  # type: ignore
 from typing import List, Dict, Any, Optional, no_type_check
 from pydantic import BaseModel
+import json
 import uvicorn  # type: ignore
 
 # 커스텀 모듈 임포트
@@ -558,6 +559,64 @@ def migrate_schedules(schedules: List[Schedule]):
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=str(e))
+
+def auto_seed_db():
+    """DB가 비어있을 경우 로컬 JSON 파일들로부터 데이터를 자동으로 채움"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    
+    try:
+        # 1. Records (인계서)
+        cursor.execute("SELECT COUNT(*) as count FROM records")
+        if cursor.fetchone()['count'] == 0:
+            file_path = "render_records.json"
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for r in data:
+                        cursor.execute("""
+                            INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (slip_no) DO NOTHING
+                        """, (r['slip_no'], r['date'], r['waste_type'], r['amount'], r['carrier'], r['vehicle_no'], 
+                              r['processor'], r['note1'], r['note2'], r['category'], r['supplier'], r['status'], r['created_at']))
+                print(f"✅ Records seeded: {len(data)} items")
+
+        # 2. Schedules (일정)
+        cursor.execute("SELECT COUNT(*) as count FROM schedules")
+        if cursor.fetchone()['count'] == 0:
+            file_path = "local_schedules.json"
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for s in data:
+                        cursor.execute(
+                            "INSERT INTO schedules (date, content, status, created_at) VALUES (%s, %s, %s, %s)",
+                            (s['date'], s['content'], s['status'], s['created_at'])
+                        )
+                print(f"✅ Schedules seeded: {len(data)} items")
+
+        # 3. Liquid Waste (액상폐기물 - _excel_data.json)
+        cursor.execute("SELECT COUNT(*) as count FROM liquid_waste")
+        if cursor.fetchone()['count'] == 0:
+            file_path = "_excel_data.json"
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    # _excel_data.json은 복잡한 구조이므로, excel_service에서 파싱 로직을 가져와야 함.
+                    # 여기선 간단히 텍스트로 존재 여부만 확인하거나, 별도 스크립트 실행 권장.
+                    # 일단 스킵하거나 간단하게 구현.
+                    pass
+
+        conn.commit()
+    except Exception as e:
+        print(f"❌ Auto-seeding failed: {e}")
+    finally:
+        conn.close()
+
+@app.on_event("startup")
+async def startup_event():
+    # Render 환경에서만 실행하거나 로컬에서도 실행 가능
+    auto_seed_db()
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
