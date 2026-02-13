@@ -21,6 +21,12 @@ import excel_service  # type: ignore
 
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 
+def db_row_to_dict(row):
+    """SQLite Row 또는 RealDictCursor Row를 딕셔너리로 변환"""
+    if row is None:
+        return None
+    return dict(row)
+
 app = FastAPI(title="지정폐기물 관리 시스템 API")
 
 # 보안 미들웨어 비활성화 - Render 사이트에서 직접 데이터 관리 허용
@@ -262,13 +268,13 @@ def get_master():
         cursor = conn.cursor()
         
         cursor.execute("SELECT DISTINCT waste_type FROM records WHERE waste_type IS NOT NULL AND waste_type != ''")
-        waste_types = [row['waste_type'] for row in cursor.fetchall()]
+        waste_types = [db_row_to_dict(row)['waste_type'] for row in cursor.fetchall()]
         
         cursor.execute("SELECT DISTINCT processor FROM records WHERE processor IS NOT NULL AND processor != ''")
-        processors = [row['processor'] for row in cursor.fetchall()]
+        processors = [db_row_to_dict(row)['processor'] for row in cursor.fetchall()]
         
         cursor.execute("SELECT DISTINCT vehicle_no FROM records WHERE vehicle_no IS NOT NULL AND vehicle_no != ''")
-        vehicles = [row['vehicle_no'] for row in cursor.fetchall()]
+        vehicles = [db_row_to_dict(row)['vehicle_no'] for row in cursor.fetchall()]
 
         conn.close()
         return {
