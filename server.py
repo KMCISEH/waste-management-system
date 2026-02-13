@@ -104,10 +104,11 @@ def create_record(record: Record):
         cursor.execute('''
         INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, is_local)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+        RETURNING id
         ''', (record.slip_no, record.date, record.waste_type, record.amount, record.carrier, 
               record.vehicle_no, record.processor, record.note1, record.note2, record.category, record.supplier, record.status))
         conn.commit()
-        new_id = cursor.lastrowid
+        new_id = cursor.fetchone()['id'] if os.environ.get('DATABASE_URL') else cursor.lastrowid
         conn.close()
         return {"message": "Success", "id": new_id}
     except sqlite3.IntegrityError:
@@ -210,11 +211,11 @@ def create_schedule(schedule: Schedule):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT INTO schedules (date, content, status) VALUES (%s, %s, %s)",
+            "INSERT INTO schedules (date, content, status) VALUES (%s, %s, %s) RETURNING id",
             (schedule.date, schedule.content, schedule.status or 'pending')
         )
         conn.commit()
-        new_id = cursor.lastrowid
+        new_id = cursor.fetchone()['id'] if os.environ.get('DATABASE_URL') else cursor.lastrowid
         conn.close()
         return {"message": "Success", "id": new_id}
     except Exception as e:
@@ -260,13 +261,13 @@ def get_master():
     cursor = conn.cursor()
     
     cursor.execute("SELECT DISTINCT waste_type FROM records WHERE waste_type IS NOT NULL AND waste_type != ''")
-    waste_types = [row[0] for row in cursor.fetchall()]
+    waste_types = [row['waste_type'] for row in cursor.fetchall()]
     
     cursor.execute("SELECT DISTINCT processor FROM records WHERE processor IS NOT NULL AND processor != ''")
-    processors = [row[0] for row in cursor.fetchall()]
+    processors = [row['processor'] for row in cursor.fetchall()]
     
     cursor.execute("SELECT DISTINCT vehicle_no FROM records WHERE vehicle_no IS NOT NULL AND vehicle_no != ''")
-    vehicles = [row[0] for row in cursor.fetchall()]
+    vehicles = [row['vehicle_no'] for row in cursor.fetchall()]
 
     conn.close()
     return {
