@@ -2221,3 +2221,129 @@ table.data-table.lw-table tbody tr.lw-total-row td {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+/* === 컴팩트 레이아웃 (한 화면에 맞추기) === */
+
+/* 액상폐기물 차트 2개 가로 배치 */
+.lw-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (max-width: 1024px) {
+  .lw-charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 컴팩트 카드 */
+.recent-card.compact,
+.chart-card.compact {
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.recent-card.compact .chart-header,
+.chart-card.compact .chart-header {
+  padding: 8px 12px;
+}
+
+.recent-card.compact .chart-header h3 {
+  font-size: 0.9rem;
+}
+
+/* 컴팩트 테이블 */
+.data-table.compact th,
+.data-table.compact td {
+  padding: 5px 8px;
+  font-size: 0.78rem;
+}
+
+/* 컴팩트 드롭존 */
+.upload-drop-zone.compact {
+  margin: 12px 0 0;
+  padding: 16px 24px;
+}
+
+.upload-drop-zone.compact .drop-zone-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-drop-zone.compact .drop-zone-content i {
+  font-size: 1.2rem;
+}
+
+.upload-drop-zone.compact .drop-zone-content span {
+  font-size: 0.85rem;
+}
+
+/* 컴팩트 페이지 헤더 */
+.page-header.compact {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+/* 캘린더 셀 높이 축소 */
+#page-schedule .calendar-day {
+  min-height: 90px;
+  padding: 6px;
+}
+
+#page-schedule .day-number {
+  font-size: 0.8rem;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+}
+
+#page-schedule .holiday-name {
+  font-size: 0.6rem;
+}
+
+#page-schedule .calendar-event {
+  padding: 2px 5px;
+  font-size: 0.68rem;
+  margin-bottom: 1px;
+}
+
+#page-schedule .calendar-header .weekday {
+  padding: 6px 0;
+  font-size: 0.75rem;
+}
+
+/* 액상폐기물 통계 카드 축소 */
+#page-liquid-waste .stat-card.mini {
+  padding: 10px 14px;
+}
+
+#page-liquid-waste .stat-card.mini .stat-number {
+  font-size: 1.1rem;
+}
+
+#page-liquid-waste .page-header {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+/* 액상폐기물 요약 테이블 축소 */
+#page-liquid-waste .lw-table th,
+#page-liquid-waste .lw-table td {
+  padding: 4px 8px;
+  font-size: 0.78rem;
+}
+
+#page-liquid-waste .recent-card {
+  margin-top: 12px;
+}
+
+#page-liquid-waste .chart-header {
+  padding: 8px 16px;
+}
+
+#page-liquid-waste .chart-header h3 {
+  font-size: 0.9rem;
+}

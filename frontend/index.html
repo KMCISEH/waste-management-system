@@ -676,33 +676,31 @@
           </div>
         </div>
 
-        <!-- 2. 월별 배출량 그래프 (MT) -->
-        <div class="chart-card" style="margin-top: 20px">
-          <div class="chart-header">
-            <h3>월별 배출량 그래프 (MT)</h3>
+        <!-- 2+4. 차트 2개 가로 배치 -->
+        <div class="lw-charts-row">
+          <div class="chart-card">
+            <div class="chart-header"><h3>월별 배출량 그래프 (MT)</h3></div>
+            <div class="chart-body" style="height: 220px">
+              <canvas id="lwTeamMonthlyChart"></canvas>
+            </div>
           </div>
-          <div class="chart-body" style="height: 320px">
-            <canvas id="lwTeamMonthlyChart"></canvas>
+          <div class="chart-card">
+            <div class="chart-header"><h3 id="lwPieTitle">팀별 배출량 그래프 (MT)</h3></div>
+            <div class="chart-body" style="height: 220px; padding: 10px">
+              <canvas id="lwTeamPieChart"></canvas>
+            </div>
           </div>
         </div>
 
         <!-- 3. 선택 월 팀별 배출량 (MT) - 상세 내역 -->
-        <div class="recent-card" style="margin-top: 20px">
-          <div class="chart-header">
-            <h3 id="lwDetailTitle">팀별 배출량 (MT)</h3>
-          </div>
-          <div class="table-container">
-            <table class="data-table lw-table">
+        <div class="recent-card compact">
+          <div class="chart-header"><h3 id="lwDetailTitle">팀별 배출량 (MT)</h3></div>
+          <div class="table-container" style="max-height: 260px; overflow-y: auto">
+            <table class="data-table lw-table compact">
               <thead>
                 <tr>
-                  <th>배출일</th>
-                  <th>반입일</th>
-                  <th>종류</th>
-                  <th>내용물(기재내용)</th>
-                  <th>배출부서</th>
-                  <th>배출자</th>
-                  <th>반입수량(EA)</th>
-                  <th>반입량(kg)</th>
+                  <th>배출일</th><th>반입일</th><th>종류</th><th>내용물</th>
+                  <th>배출부서</th><th>배출자</th><th>수량(EA)</th><th>반입량(kg)</th>
                 </tr>
               </thead>
               <tbody id="lwDetailTableBody"></tbody>
@@ -710,28 +708,17 @@
           </div>
         </div>
 
-        <!-- 4. 선택 월 팀별 배출량 그래프 (MT) -->
-        <div class="chart-card" style="margin-top: 20px">
-          <div class="chart-header">
-            <h3 id="lwPieTitle">팀별 배출량 그래프 (MT)</h3>
-          </div>
-          <div class="chart-body" style="height: 400px; padding: 20px">
-            <canvas id="lwTeamPieChart"></canvas>
-          </div>
-        </div>
-
-        <!-- 드래그 앤 드롭 영역 (최하단) -->
-        <div id="lwDropZone" class="upload-drop-zone" style="margin-top: 40px">
+        <!-- 드래그 앤 드롭 영역 -->
+        <div id="lwDropZone" class="upload-drop-zone compact">
           <div class="drop-zone-content">
             <i class="fas fa-cloud-upload-alt"></i>
-            <p>신규 데이터 업로드</p>
-            <span>엑셀 파일을 여기에 끌어다 놓으세요 (.xlsx, .xls)</span>
+            <span>신규 데이터 업로드 — 엑셀 파일을 여기에 끌어다 놓으세요 (.xlsx, .xls)</span>
           </div>
         </div>
       </section>
 
       <section class="page" id="page-schedule">
-        <div class="page-header">
+        <div class="page-header compact">
           <h2 class="page-title">
             <i class="fas fa-truck"></i>
             배차 / 일정 관리
