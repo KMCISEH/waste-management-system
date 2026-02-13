@@ -25,7 +25,6 @@ app = FastAPI(title="지정폐기물 관리 시스템 API")
 # 보안 미들웨어 비활성화 - Render 사이트에서 직접 데이터 관리 허용
 
 # CORS 설정 추가 (브라우저 연결 안정성 확보)
-# allow_credentials=True일 경우 allow_origins=["*"]는 브라우저에서 차단될 수 있으므로 명시적 주소 사용
 origins = [
     "https://waste-management-ee09a.web.app",
     "https://waste-management-ee09a.firebaseapp.com",
@@ -40,6 +39,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 모든 응답에 CORS 헤더를 강제로 추가하는 미들웨어 (백업용)
+@app.middleware("http")
+async def add_cors_header(request: Request, call_next):
+    response = await call_next(request)
+    origin = request.headers.get("origin")
+    if origin in origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 @app.get("/")
 def read_root():
@@ -136,6 +145,22 @@ def delete_all_records():
     conn.commit()
     conn.close()
     return {"message": "All records deleted"}
+
+@app.post("/api/reset-db")
+def reset_database():
+    """DB 초기화: 모든 테이블의 데이터를 삭제합니다."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        tables = ["records", "schedules", "liquid_waste"]
+        for table in tables:
+            cursor.execute(f"DELETE FROM {table}")
+        conn.commit()
+        conn.close()
+        return {"message": "Database reset successful", "tables_cleared": tables}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- 일정 관리 API ---
 
