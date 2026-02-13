@@ -631,7 +631,7 @@ def auto_seed_db():
                             r.get('status', 'completed'), 
                             r.get('created_at', '')
                         ))
-                print(f"✅ Records seeded: {len(data)} items (with is_local=1)")
+                print(f"[OK] Records seeded: {len(data)} items (with is_local=1)")
 
         # 2. Schedules (일정)
         # 2. Schedules (일정)
@@ -649,7 +649,7 @@ def auto_seed_db():
                             "INSERT INTO schedules (date, content, status, created_at) VALUES (%s, %s, %s, %s)",
                             (s.get('date', ''), s.get('content', ''), s.get('status', 'pending'), s.get('created_at', ''))
                         )
-                print(f"✅ Schedules seeded: {len(data)} items")
+                print(f"[OK] Schedules seeded: {len(data)} items")
 
         # 3. Liquid Waste (액상폐기물 - local_liquid_waste.json)
         cursor.execute("SELECT COUNT(*) as count FROM liquid_waste")
@@ -677,11 +677,11 @@ def auto_seed_db():
                             lw.get('quantity_ea', 0),
                             float(lw.get('amount_kg', 0) or 0)
                         ))
-                print(f"✅ Liquid waste seeded: {len(data)} items")
+                print(f"[OK] Liquid waste seeded: {len(data)} items")
 
         conn.commit()
     except Exception as e:
-        print(f"❌ Auto-seeding failed: {e}")
+        print(f"[ERROR] Auto-seeding failed: {e}")
     finally:
         conn.close()
 

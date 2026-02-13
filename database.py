@@ -98,7 +98,7 @@ def get_db_conn():
         init_sqlite_tables(conn)
         
         if is_new:
-            print(f"✅ 새 로컬 데이터베이스 생성 완료: {DB_PATH}")
+            print(f"[OK] 새 로컬 데이터베이스 생성 완료: {DB_PATH}")
         
         # 래퍼로 감싸서 %s → ? 자동 변환
         return SQLiteConnectionWrapper(conn)
