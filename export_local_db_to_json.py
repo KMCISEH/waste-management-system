@@ -26,6 +26,12 @@ try:
     processed_records = []
     for r in records:
         # Convert amount to float explicitly if needed, but dict_factory handles most types
+        r['amount'] = float(r['amount']) if r['amount'] is not None else 0.0
+        
+        # Ensure date format is YYYY-MM-DD
+        if r['date'] and len(str(r['date'])) > 10:
+            r['date'] = str(r['date'])[:10]
+            
         # Ensure is_local is set to 1 for deployed environment editing
         r['is_local'] = 1 
         processed_records.append(r)
