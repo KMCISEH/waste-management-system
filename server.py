@@ -619,6 +619,7 @@ def auto_seed_db():
                             INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, is_local, created_at)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
                             ON CONFLICT (slip_no) DO UPDATE SET
+                                date = EXCLUDED.date,
                                 amount = EXCLUDED.amount,
                                 is_local = 1,
                                 waste_type = EXCLUDED.waste_type,
