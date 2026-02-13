@@ -593,24 +593,50 @@ def auto_seed_db():
     
     try:
         # 1. Records (인계서)
+        # 1. Records (인계서)
         cursor.execute("SELECT COUNT(*) as count FROM records")
-        if cursor.fetchone()['count'] == 0:
+        first_row = cursor.fetchone()
+        records_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
+        
+        if records_count == 0:
             file_path = "render_records.json"
             if os.path.exists(file_path):
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    
+                    # 로컬 데이터 매핑 및 is_local=1 강제 설정 (배포환경에서도 수정 가능하도록)
                     for r in data:
+                        # amount, is_local 값을 명시적으로 처리
+                        amount = float(r.get('amount', 0) or 0)
+                        
                         cursor.execute("""
-                            INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, created_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, is_local, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
                             ON CONFLICT (slip_no) DO NOTHING
-                        """, (r['slip_no'], r['date'], r['waste_type'], r['amount'], r['carrier'], r['vehicle_no'], 
-                              r['processor'], r['note1'], r['note2'], r['category'], r['supplier'], r['status'], r['created_at']))
-                print(f"✅ Records seeded: {len(data)} items")
+                        """, (
+                            r.get('slip_no', ''), 
+                            r.get('date', ''), 
+                            r.get('waste_type', ''), 
+                            amount, 
+                            r.get('carrier', ''), 
+                            r.get('vehicle_no', ''), 
+                            r.get('processor', ''), 
+                            r.get('note1', ''), 
+                            r.get('note2', ''), 
+                            r.get('category', ''), 
+                            r.get('supplier', ''), 
+                            r.get('status', 'completed'), 
+                            r.get('created_at', '')
+                        ))
+                print(f"✅ Records seeded: {len(data)} items (with is_local=1)")
 
         # 2. Schedules (일정)
+        # 2. Schedules (일정)
         cursor.execute("SELECT COUNT(*) as count FROM schedules")
-        if cursor.fetchone()['count'] == 0:
+        first_row = cursor.fetchone()
+        schedules_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
+        
+        if schedules_count == 0:
             file_path = "local_schedules.json"
             if os.path.exists(file_path):
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -618,20 +644,15 @@ def auto_seed_db():
                     for s in data:
                         cursor.execute(
                             "INSERT INTO schedules (date, content, status, created_at) VALUES (%s, %s, %s, %s)",
-                            (s['date'], s['content'], s['status'], s['created_at'])
+                            (s.get('date', ''), s.get('content', ''), s.get('status', 'pending'), s.get('created_at', ''))
                         )
                 print(f"✅ Schedules seeded: {len(data)} items")
 
         # 3. Liquid Waste (액상폐기물 - _excel_data.json)
-        cursor.execute("SELECT COUNT(*) as count FROM liquid_waste")
-        if cursor.fetchone()['count'] == 0:
-            file_path = "_excel_data.json"
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    # _excel_data.json은 복잡한 구조이므로, excel_service에서 파싱 로직을 가져와야 함.
-                    # 여기선 간단히 텍스트로 존재 여부만 확인하거나, 별도 스크립트 실행 권장.
-                    # 일단 스킵하거나 간단하게 구현.
-                    pass
+        # 3. Liquid Waste (액상폐기물 - _excel_data.json)
+        # _excel_data.json 파일은 복잡한 구조로 되어 있어 자동 파싱이 어려울 수 있음.
+        # 일단 pass 처리하고 사용자 요청 시 별도 구현
+        pass
 
         conn.commit()
     except Exception as e:
