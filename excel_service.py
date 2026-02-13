@@ -48,12 +48,19 @@ def export_filtered_to_excel(data):
 
 def import_from_excel(file_content: bytes):
     """엑셀 파일에서 데이터를 읽어 DB에 저장"""
-    try:
-        # calamine 엔진이 설치되어 있으면 우선 사용 (더 견고함)
-        df = pd.read_excel(BytesIO(file_content), engine='calamine')
-    except:
-        df = pd.read_excel(BytesIO(file_content))
-    return _import_dataframe(df)
+    read_errors = []
+    file_stream = BytesIO(file_content)
+    
+    # 스타일 메타데이터 이슈(styleId) 회피를 위해 calamine 우선 시도
+    for engine in ("calamine", "openpyxl"):
+        try:
+            file_stream.seek(0)
+            df = pd.read_excel(file_stream, engine=engine)
+            return _import_dataframe(df)
+        except Exception as e:
+            read_errors.append(f"{engine}: {str(e)}")
+
+    raise ValueError(f"엑셀 처리 중 오류: {' | '.join(read_errors)}")
 
 def import_from_csv(file_content: bytes):
     """CSV 파일에서 데이터를 읽어 DB에 저장"""
