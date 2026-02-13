@@ -257,24 +257,28 @@ def delete_schedule(schedule_id: int):
 
 @app.get("/api/master")
 def get_master():
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT DISTINCT waste_type FROM records WHERE waste_type IS NOT NULL AND waste_type != ''")
-    waste_types = [row['waste_type'] for row in cursor.fetchall()]
-    
-    cursor.execute("SELECT DISTINCT processor FROM records WHERE processor IS NOT NULL AND processor != ''")
-    processors = [row['processor'] for row in cursor.fetchall()]
-    
-    cursor.execute("SELECT DISTINCT vehicle_no FROM records WHERE vehicle_no IS NOT NULL AND vehicle_no != ''")
-    vehicles = [row['vehicle_no'] for row in cursor.fetchall()]
+    try:
+        conn = get_db_conn()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT DISTINCT waste_type FROM records WHERE waste_type IS NOT NULL AND waste_type != ''")
+        waste_types = [row['waste_type'] for row in cursor.fetchall()]
+        
+        cursor.execute("SELECT DISTINCT processor FROM records WHERE processor IS NOT NULL AND processor != ''")
+        processors = [row['processor'] for row in cursor.fetchall()]
+        
+        cursor.execute("SELECT DISTINCT vehicle_no FROM records WHERE vehicle_no IS NOT NULL AND vehicle_no != ''")
+        vehicles = [row['vehicle_no'] for row in cursor.fetchall()]
 
-    conn.close()
-    return {
-        "wasteTypes": sorted(waste_types),
-        "processors": sorted(processors),
-        "vehicles": sorted(vehicles)
-    }
+        conn.close()
+        return {
+            "wasteTypes": sorted(waste_types),
+            "processors": sorted(processors),
+            "vehicles": sorted(vehicles)
+        }
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
 # --- 데이터 입출력 (Import/Export) API ---
 
