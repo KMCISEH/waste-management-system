@@ -8,17 +8,18 @@ from database import get_db_conn
 def export_to_excel():
     """DB의 모든 데이터를 한글 컬럼명이 포함된 엑셀 파일로 변환"""
     conn = get_db_conn()
+    # PostgreSQL/SQLite 모두 호환되도록 AS 별칭에 큰따옴표 사용
     query = """
         SELECT 
-            date AS '처리일',
-            slip_no AS '전표번호',
-            waste_type AS '폐기물명',
-            amount AS '처리량(톤)',
-            vehicle_no AS '차량번호',
-            processor AS '처리업체',
-            note1 AS '처리방법',
-            category AS '비고',
-            supplier AS '장소'
+            date AS "처리일",
+            slip_no AS "전표번호",
+            waste_type AS "폐기물명",
+            amount AS "처리량(톤)",
+            vehicle_no AS "차량번호",
+            processor AS "처리업체",
+            note1 AS "처리방법",
+            category AS "비고",
+            supplier AS "장소"
         FROM records 
         ORDER BY date DESC, id DESC
     """
@@ -96,7 +97,7 @@ def _import_dataframe(df):
                 elif '디에너지' in processor: category = "메탄올"
             cursor.execute('''
             INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
                 slip_no,
                 str(get_val(row, ['date', '날짜', '인계일자(*)'])),
