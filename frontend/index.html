@@ -465,7 +465,15 @@
               <tbody id="recordsBody"></tbody>
             </table>
           </div>
-          <div class="pagination" id="pagination"></div>
+          <div class="pagination-bar">
+            <div class="page-size-selector">
+              <span>표시:</span>
+              <button class="page-size-btn active" data-size="20" onclick="changePageSize(20)">20건</button>
+              <button class="page-size-btn" data-size="50" onclick="changePageSize(50)">50건</button>
+              <button class="page-size-btn" data-size="all" onclick="changePageSize(9999)">전체</button>
+            </div>
+            <div class="pagination" id="pagination"></div>
+          </div>
         </div>
       </section>
 

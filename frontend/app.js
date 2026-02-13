@@ -7,7 +7,7 @@ const APP = {
   masterData: {},
   currentPage: "dashboard",
   recordsPage: 1,
-  recordsPerPage: 50,
+  recordsPerPage: 20,
   sortField: "date",
   sortDir: "desc",
   charts: {},
@@ -1588,20 +1588,59 @@ function getFilteredRecords(excludeCol = null) {
       return APP.sortDir === "asc" ? (va > vb ? 1 : -1) : va < vb ? 1 : -1;
     });
 }
+function changePageSize(size) {
+  APP.recordsPerPage = size;
+  APP.recordsPage = 1;
+  // 버튼 활성화 상태 업데이트
+  document.querySelectorAll(".page-size-btn").forEach((btn) => {
+    const btnSize = btn.dataset.size === "all" ? 9999 : parseInt(btn.dataset.size);
+    btn.classList.toggle("active", btnSize === size);
+  });
+  renderRecordsTable();
+}
+
 function renderPagination(total, items) {
   const p = document.getElementById("pagination");
   p.innerHTML = `<span style="font-size:0.8rem;color:var(--text-muted);">총 ${items}건</span>`;
   if (total <= 1) return;
-  for (let i = 1; i <= total; i++) {
-    const btn = document.createElement("button");
-    btn.textContent = i;
-    btn.className = i === APP.recordsPage ? "active" : "";
-    btn.onclick = () => {
-      APP.recordsPage = i;
-      renderRecordsTable();
-    };
-    p.appendChild(btn);
+
+  // 페이지 수가 많으면 축약 표시
+  const maxButtons = 10;
+  const current = APP.recordsPage;
+  let start = 1, end = total;
+
+  if (total > maxButtons) {
+    start = Math.max(1, current - Math.floor(maxButtons / 2));
+    end = Math.min(total, start + maxButtons - 1);
+    if (end - start < maxButtons - 1) start = Math.max(1, end - maxButtons + 1);
   }
+
+  if (start > 1) {
+    addPageBtn(p, 1);
+    if (start > 2) p.insertAdjacentHTML("beforeend", '<span class="page-dots">...</span>');
+  }
+
+  for (let i = start; i <= end; i++) {
+    addPageBtn(p, i);
+  }
+
+  if (end < total) {
+    if (end < total - 1) p.insertAdjacentHTML("beforeend", '<span class="page-dots">...</span>');
+    addPageBtn(p, total);
+  }
+}
+
+function addPageBtn(container, pageNum) {
+  const btn = document.createElement("button");
+  btn.textContent = pageNum;
+  btn.className = pageNum === APP.recordsPage ? "active" : "";
+  btn.onclick = () => {
+    APP.recordsPage = pageNum;
+    renderRecordsTable();
+    // 테이블 상단으로 스크롤
+    document.getElementById("page-records").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  container.appendChild(btn);
 }
 function exportCSV() {
   const data = getFilteredRecords();
