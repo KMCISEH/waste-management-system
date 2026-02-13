@@ -35,6 +35,7 @@ app = FastAPI(title="지정폐기물 관리 시스템 API")
 origins = [
     "https://waste-management-ee09a.web.app",
     "https://waste-management-ee09a.firebaseapp.com",
+    "https://waste-api-3j2l.onrender.com",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
@@ -650,11 +651,33 @@ def auto_seed_db():
                         )
                 print(f"✅ Schedules seeded: {len(data)} items")
 
-        # 3. Liquid Waste (액상폐기물 - _excel_data.json)
-        # 3. Liquid Waste (액상폐기물 - _excel_data.json)
-        # _excel_data.json 파일은 복잡한 구조로 되어 있어 자동 파싱이 어려울 수 있음.
-        # 일단 pass 처리하고 사용자 요청 시 별도 구현
-        pass
+        # 3. Liquid Waste (액상폐기물 - local_liquid_waste.json)
+        cursor.execute("SELECT COUNT(*) as count FROM liquid_waste")
+        first_row = cursor.fetchone()
+        lw_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
+        
+        if lw_count == 0:
+            file_path = "local_liquid_waste.json"
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for lw in data:
+                        cursor.execute("""
+                            INSERT INTO liquid_waste 
+                            (year_month, discharge_date, receive_date, waste_type, content, team, discharger, quantity_ea, amount_kg)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            lw.get('year_month', ''),
+                            lw.get('discharge_date', None),
+                            lw.get('receive_date', None),
+                            lw.get('waste_type', ''),
+                            lw.get('content', ''),
+                            lw.get('team', ''),
+                            lw.get('discharger', ''),
+                            lw.get('quantity_ea', 0),
+                            float(lw.get('amount_kg', 0) or 0)
+                        ))
+                print(f"✅ Liquid waste seeded: {len(data)} items")
 
         conn.commit()
     except Exception as e:

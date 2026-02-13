@@ -16,8 +16,8 @@ const APP = {
     month: new Date().getMonth() + 1,
     schedules: [],
   },
-  // 보안 설정: localhost 접속이 아니면 읽기 전용 모드 활성화
-  isReadOnly: !["localhost", "127.0.0.1"].includes(window.location.hostname),
+  // 보안 설정: 배포 환경에서도 데이터 관리 가능하도록 읽기 전용 모드 비활성화
+  isReadOnly: false,
   // API 베이스 URL 설정
   get apiBase() {
     // 로컬 접속이거나 Render 사이트에서 직접 접속한 경우 상대 경로 사용
