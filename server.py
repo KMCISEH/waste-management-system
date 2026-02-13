@@ -663,6 +663,7 @@ def auto_seed_db():
 @app.on_event("startup")
 async def startup_event():
     # Render 환경에서만 실행하거나 로컬에서도 실행 가능
+    # Auto-seeding logic triggered
     auto_seed_db()
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
