@@ -6,12 +6,13 @@ import sqlite3
 # 현재 디렉토리를 경로에 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Request  # type: ignore
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Request, Header  # type: ignore
 from fastapi.staticfiles import StaticFiles  # type: ignore
 from fastapi.responses import StreamingResponse, JSONResponse  # type: ignore
 from typing import List, Dict, Any, Optional, no_type_check
 from pydantic import BaseModel
 import json
+import hashlib
 import uvicorn  # type: ignore
 
 # 커스텀 모듈 임포트
@@ -20,6 +21,20 @@ from models import Record, StatusUpdate, Schedule  # type: ignore
 import excel_service  # type: ignore
 
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
+
+# === 관리자 비밀번호 설정 ===
+# 환경변수로 설정 가능, 기본값: "kmci2026"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "kmci2026")
+
+def verify_admin(token: str) -> bool:
+    """관리자 토큰 검증: 비밀번호의 SHA256 해시와 비교"""
+    expected = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
+    return token == expected
+
+def require_admin(x_admin_token: Optional[str] = Header(None)):
+    """쓰기 API 보호용: 관리자 토큰이 없거나 틀리면 403 에러"""
+    if not x_admin_token or not verify_admin(x_admin_token):
+        raise HTTPException(status_code=403, detail="관리자 인증이 필요합니다.")
 
 def db_row_to_dict(row):
     """SQLite Row 또는 RealDictCursor Row를 딕셔너리로 변환"""
@@ -61,6 +76,18 @@ async def add_cors_header(request: Request, call_next):
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy", "environment": os.environ.get("RENDER", "local")}
+
+# === 관리자 인증 API ===
+class LoginRequest(BaseModel):
+    password: str
+
+@app.post("/api/auth/login")
+def admin_login(req: LoginRequest):
+    """비밀번호 검증 후 관리자 토큰 반환"""
+    if req.password == ADMIN_PASSWORD:
+        token = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
+        return {"success": True, "token": token}
+    raise HTTPException(status_code=401, detail="비밀번호가 틀렸습니다.")
 
 @app.get("/api/debug-db")
 def debug_db():
@@ -109,7 +136,8 @@ def get_records():
     return [dict(row) for row in rows]
 
 @app.post("/api/records")
-def create_record(record: Record):
+def create_record(record: Record, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     try:
@@ -131,7 +159,8 @@ def create_record(record: Record):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/records/{record_id}")
-def update_record(record_id: int, record: Record):
+def update_record(record_id: int, record: Record, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     try:
@@ -155,7 +184,8 @@ def update_record(record_id: int, record: Record):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.patch("/api/records/{record_id}/status")
-def update_status(record_id: int, status_update: StatusUpdate):
+def update_status(record_id: int, status_update: StatusUpdate, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE records SET status = %s WHERE id = %s", (status_update.status, record_id))
@@ -167,7 +197,8 @@ def update_status(record_id: int, status_update: StatusUpdate):
     return {"message": "Updated"}
 
 @app.delete("/api/records/{record_id}")
-def delete_record(record_id: int):
+def delete_record(record_id: int, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM records WHERE id = %s", (record_id,))
@@ -179,8 +210,9 @@ def delete_record(record_id: int):
     return {"message": "Deleted"}
 
 @app.delete("/api/records")
-def delete_all_records():
+def delete_all_records(x_admin_token: Optional[str] = Header(None)):
     """모든 데이터 삭제 (관리자 전용)"""
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM records")
@@ -202,8 +234,9 @@ def get_schedules():
     return [dict(row) for row in rows]
 
 @app.post("/api/schedules")
-def create_schedule(schedule: Schedule):
+def create_schedule(schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
     """새 일정 등록"""
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     try:
@@ -220,8 +253,9 @@ def create_schedule(schedule: Schedule):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/schedules/{schedule_id}")
-def update_schedule(schedule_id: int, schedule: Schedule):
+def update_schedule(schedule_id: int, schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
     """일정 수정 (내용, 상태)"""
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     try:
@@ -240,8 +274,9 @@ def update_schedule(schedule_id: int, schedule: Schedule):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/schedules/{schedule_id}")
-def delete_schedule(schedule_id: int):
+def delete_schedule(schedule_id: int, x_admin_token: Optional[str] = Header(None)):
     """일정 삭제"""
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM schedules WHERE id = %s", (schedule_id,))
@@ -306,8 +341,9 @@ async def export_excel_filtered(data: List[Dict[str, Any]] = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/import/excel")
-async def import_excel(file: UploadFile = File(...)):
+async def import_excel(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
     """엑셀 파일 업로드 및 데이터 저장"""
+    require_admin(x_admin_token)
     try:
         content = await file.read()
         result = excel_service.import_from_excel(content)
@@ -316,8 +352,9 @@ async def import_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"엑셀 처리 중 오류: {str(e)}")
 
 @app.post("/api/import/csv")
-async def import_csv(file: UploadFile = File(...)):
+async def import_csv(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
     """CSV 파일 업로드 및 데이터 저장"""
+    require_admin(x_admin_token)
     try:
         content = await file.read()
         result = excel_service.import_from_csv(content)
@@ -329,8 +366,9 @@ async def import_csv(file: UploadFile = File(...)):
 
 @app.post("/api/liquid-waste/upload")
 @no_type_check
-async def upload_liquid_waste(file: UploadFile = File(...)):
+async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
     """액상폐기물 Excel 파일 업로드 및 파싱"""
+    require_admin(x_admin_token)
     try:
         import openpyxl  # type: ignore
         from io import BytesIO
@@ -509,8 +547,9 @@ async def get_liquid_waste(year: str | None = None):
 
 
 @app.delete("/api/liquid-waste/{year_month}")
-async def delete_liquid_waste(year_month: str):
+async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = Header(None)):
     """특정 월 액상폐기물 데이터 삭제"""
+    require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM liquid_waste WHERE year_month = %s", (year_month,))

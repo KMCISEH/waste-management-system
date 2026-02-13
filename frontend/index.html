@@ -55,6 +55,22 @@
         </a>
       </nav>
       <div class="sidebar-footer">
+        <div class="admin-login-area" id="adminLoginArea">
+          <button class="admin-login-btn" id="adminLoginBtn" onclick="openLoginModal()">
+            <i class="fas fa-lock"></i>
+            <span>관리자 로그인</span>
+          </button>
+        </div>
+        <div class="admin-logout-area" id="adminLogoutArea" style="display:none;">
+          <div class="admin-status">
+            <i class="fas fa-user-shield"></i>
+            <span>관리자 모드</span>
+          </div>
+          <button class="admin-logout-btn" id="adminLogoutBtn" onclick="adminLogout()">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>로그아웃</span>
+          </button>
+        </div>
         <div class="theme-toggle" id="themeToggle">
           <i class="fas fa-moon"></i>
           <span>다크 모드</span>
@@ -65,6 +81,29 @@
         </div>
       </div>
     </aside>
+
+    <!-- 관리자 로그인 모달 -->
+    <div class="modal-overlay" id="loginModal" style="display:none;">
+      <div class="modal login-modal">
+        <div class="modal-header">
+          <h3><i class="fas fa-user-shield"></i> 관리자 로그인</h3>
+          <button class="modal-close" onclick="closeLoginModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin-bottom:16px;color:var(--text-muted);">데이터 수정/삭제/업로드를 위해 비밀번호를 입력하세요.</p>
+          <div class="form-group">
+            <label for="adminPassword"><i class="fas fa-key"></i> 비밀번호</label>
+            <input type="password" id="adminPassword" placeholder="비밀번호 입력" 
+                   onkeydown="if(event.key==='Enter') adminLogin()" autofocus />
+          </div>
+          <p class="login-error" id="loginError" style="display:none;color:var(--danger);margin-top:8px;"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeLoginModal()">취소</button>
+          <button class="btn btn-primary" onclick="adminLogin()"><i class="fas fa-sign-in-alt"></i> 로그인</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 메인 컨텐츠 -->
     <main class="main-content" id="mainContent">

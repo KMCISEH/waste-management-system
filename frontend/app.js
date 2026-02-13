@@ -16,8 +16,12 @@ const APP = {
     month: new Date().getMonth() + 1,
     schedules: [],
   },
-  // 보안 설정: 배포 환경에서도 데이터 관리 가능하도록 읽기 전용 모드 비활성화
-  isReadOnly: false,
+  // 관리자 인증 토큰 (로그인 시 설정)
+  adminToken: sessionStorage.getItem("adminToken") || null,
+  // 관리자 로그인 여부에 따라 읽기 전용 모드 결정
+  get isReadOnly() {
+    return !this.adminToken;
+  },
   // API 베이스 URL 설정
   get apiBase() {
     // 로컬 접속이거나 Render 사이트에서 직접 접속한 경우 상대 경로 사용
@@ -27,12 +31,86 @@ const APP = {
   },
 };
 
+// === 관리자 인증 함수들 ===
+function getAdminHeaders() {
+  /** 관리자 토큰을 포함한 헤더 반환 (쓰기 API 호출 시 사용) */
+  if (APP.adminToken) {
+    return { "X-Admin-Token": APP.adminToken };
+  }
+  return {};
+}
+
+function openLoginModal() {
+  document.getElementById("loginModal").style.display = "flex";
+  document.getElementById("adminPassword").value = "";
+  document.getElementById("loginError").style.display = "none";
+  setTimeout(() => document.getElementById("adminPassword").focus(), 100);
+}
+
+function closeLoginModal() {
+  document.getElementById("loginModal").style.display = "none";
+}
+
+async function adminLogin() {
+  const pw = document.getElementById("adminPassword").value;
+  if (!pw) {
+    document.getElementById("loginError").textContent = "비밀번호를 입력하세요.";
+    document.getElementById("loginError").style.display = "block";
+    return;
+  }
+  try {
+    const resp = await fetch(`${APP.apiBase}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw }),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.success) {
+      APP.adminToken = data.token;
+      sessionStorage.setItem("adminToken", data.token);
+      closeLoginModal();
+      updateAdminUI();
+      showToast("관리자 로그인 성공", "success");
+      // 현재 페이지 다시 렌더링 (버튼 표시 업데이트)
+      navigateTo(APP.currentPage);
+    } else {
+      document.getElementById("loginError").textContent = data.detail || "비밀번호가 틀렸습니다.";
+      document.getElementById("loginError").style.display = "block";
+    }
+  } catch (e) {
+    document.getElementById("loginError").textContent = "서버 연결 실패";
+    document.getElementById("loginError").style.display = "block";
+  }
+}
+
+function adminLogout() {
+  APP.adminToken = null;
+  sessionStorage.removeItem("adminToken");
+  updateAdminUI();
+  showToast("로그아웃 되었습니다.", "info");
+  navigateTo(APP.currentPage);
+}
+
+function updateAdminUI() {
+  /** 로그인/로그아웃 상태에 따라 사이드바 UI 업데이트 */
+  const loginArea = document.getElementById("adminLoginArea");
+  const logoutArea = document.getElementById("adminLogoutArea");
+  if (APP.adminToken) {
+    loginArea.style.display = "none";
+    logoutArea.style.display = "flex";
+  } else {
+    loginArea.style.display = "block";
+    logoutArea.style.display = "none";
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   await loadData();
   initNavigation();
   initTheme();
   initSidebar();
   updateCurrentDate();
+  updateAdminUI();
   renderDashboard();
   initRecordsPage();
   initSchedulePage();
@@ -405,8 +483,9 @@ async function deleteRecordAction(id) {
   try {
     const res = await fetch(`${APP.apiBase}/api/records/${id}`, {
       method: "DELETE",
+      headers: { ...getAdminHeaders() },
     });
-    if (!res.ok) throw new Error("삭제 실패");
+    if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : "삭제 실패");
     await loadData();
     renderDashboard();
     if (APP.currentPage === "records") renderRecordsTable();
@@ -565,10 +644,10 @@ async function editRecordAction(id) {
       showToast("수정 사항 반영 중...", "info");
       const res = await fetch(`${APP.apiBase}/api/records/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAdminHeaders() },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : await res.text());
       await loadData();
       renderDashboard();
       if (APP.currentPage === "records") renderRecordsTable();
@@ -875,11 +954,11 @@ async function saveSchedule(id = null) {
 
     const res = await fetch(url, {
       method: method,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getAdminHeaders() },
       body: JSON.stringify(data),
     });
 
-    if (!res.ok) throw new Error("저장 실패");
+    if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : "저장 실패");
 
     document.getElementById("modalOverlay").classList.remove("active");
     showToast(
@@ -896,8 +975,8 @@ async function deleteScheduleAction(id) {
   if (!confirm("정말 이 일정을 삭제하시겠습니까?")) return;
 
   try {
-    const res = await fetch(`${APP.apiBase}/api/schedules/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error("삭제 실패");
+    const res = await fetch(`${APP.apiBase}/api/schedules/${id}`, { method: "DELETE", headers: { ...getAdminHeaders() } });
+    if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : "삭제 실패");
 
     document.getElementById("modalOverlay").classList.remove("active");
     showToast("일정이 삭제되었습니다.", "warning");
@@ -1095,7 +1174,7 @@ async function handleGlobalFileUpload(file) {
 
   try {
     showToast("파일 분석 및 반영 중...", "info");
-    const resp = await fetch(endpoint, { method: "POST", body: formData });
+    const resp = await fetch(endpoint, { method: "POST", body: formData, headers: { ...getAdminHeaders() } });
     const result = await resp.json();
     if (resp.ok) {
       showToast(
@@ -2183,6 +2262,7 @@ async function uploadLiquidWasteExcel(file) {
     const res = await fetch(`${APP.apiBase}/api/liquid-waste/upload`, {
       method: "POST",
       body: formData,
+      headers: { ...getAdminHeaders() },
     });
 
     if (!res.ok) {
