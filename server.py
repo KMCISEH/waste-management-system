@@ -50,13 +50,26 @@ async def add_cors_header(request: Request, call_next):
         response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
 
-@app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Waste Management API is running", "environment": os.environ.get("RENDER", "local")}
-
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "environment": os.environ.get("RENDER", "local")}
+
+@app.get("/api/reset-db")
+@app.post("/api/reset-db")
+def reset_database():
+    """DB 초기화: 모든 테이블의 데이터를 삭제합니다."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        tables = ["records", "schedules", "liquid_waste"]
+        for table in tables:
+            cursor.execute(f"DELETE FROM {table}")
+        conn.commit()
+        conn.close()
+        return {"message": "Database reset successful", "tables_cleared": tables}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/records")
 def get_records():

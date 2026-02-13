@@ -20,9 +20,9 @@ const APP = {
   isReadOnly: !["localhost", "127.0.0.1"].includes(window.location.hostname),
   // API 베이스 URL 설정
   get apiBase() {
-    return ["localhost", "127.0.0.1"].includes(window.location.hostname)
-      ? "" // 로컬 환경에서는 상대 경로 사용 (server.py가 서빙)
-      : "https://waste-api-3j2l.onrender.com"; // 배포 환경: 사용자 제공 Render 백엔드 사용
+    // 로컬 접속이거나 Render 사이트에서 직접 접속한 경우 상대 경로 사용 (CORS 회피)
+    const isUnity = ["localhost", "127.0.0.1", "waste-api-3j2l.onrender.com"].includes(window.location.hostname);
+    return isUnity ? "" : "https://waste-api-3j2l.onrender.com";
   },
 };
 
