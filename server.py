@@ -599,12 +599,12 @@ def auto_seed_db():
         first_row = cursor.fetchone()
         records_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
         
-        # 데이터가 없거나, 처리량이 0인 데이터가 있다면 재동기화 수행
-        cursor.execute("SELECT COUNT(*) as count FROM records WHERE amount = 0")
-        zero_amount_row = cursor.fetchone()
-        zero_amount_count = zero_amount_row['count'] if isinstance(zero_amount_row, dict) else zero_amount_row[0]
+        # 데이터가 없거나, 처리량이 0이거나, 날짜가 비어있는 데이터가 있다면 재동기화 수행
+        cursor.execute("SELECT COUNT(*) as count FROM records WHERE amount = 0 OR date = '' OR date IS NULL")
+        fix_needed_row = cursor.fetchone()
+        fix_needed_count = fix_needed_row['count'] if isinstance(fix_needed_row, dict) else fix_needed_row[0]
 
-        if records_count == 0 or zero_amount_count > 0:
+        if records_count == 0 or fix_needed_count > 0:
             file_path = "render_records.json"
             if os.path.exists(file_path):
                 with open(file_path, "r", encoding="utf-8") as f:
