@@ -594,11 +594,17 @@ def auto_seed_db():
     try:
         # 1. Records (인계서)
         # 1. Records (인계서)
+        # 1. Records (인계서)
         cursor.execute("SELECT COUNT(*) as count FROM records")
         first_row = cursor.fetchone()
         records_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
         
-        if records_count == 0:
+        # 데이터가 없거나, 처리량이 0인 데이터가 있다면 재동기화 수행
+        cursor.execute("SELECT COUNT(*) as count FROM records WHERE amount = 0")
+        zero_amount_row = cursor.fetchone()
+        zero_amount_count = zero_amount_row['count'] if isinstance(zero_amount_row, dict) else zero_amount_row[0]
+
+        if records_count == 0 or zero_amount_count > 0:
             file_path = "render_records.json"
             if os.path.exists(file_path):
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -612,7 +618,12 @@ def auto_seed_db():
                         cursor.execute("""
                             INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, is_local, created_at)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
-                            ON CONFLICT (slip_no) DO NOTHING
+                            ON CONFLICT (slip_no) DO UPDATE SET
+                                amount = EXCLUDED.amount,
+                                is_local = 1,
+                                waste_type = EXCLUDED.waste_type,
+                                processor = EXCLUDED.processor,
+                                vehicle_no = EXCLUDED.vehicle_no
                         """, (
                             r.get('slip_no', ''), 
                             r.get('date', ''), 
