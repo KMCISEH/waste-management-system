@@ -2,6 +2,25 @@
    폐기물 관리 시스템 - Main Application (Database API version)
    ============================================ */
 
+// === CHART THEME HELPERS ===
+function getChartTextColor() {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue("--text-primary")
+    .trim() || "#94a3b8";
+}
+function getChartGridColor() {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue("--border")
+    .trim() || "rgba(100,116,139,0.15)";
+}
+// Chart.js 전역 기본값 - 테마 전환 시에도 적용
+function applyChartDefaults() {
+  const txtColor = getChartTextColor();
+  const gridColor = getChartGridColor();
+  Chart.defaults.color = txtColor;
+  Chart.defaults.scale.grid.color = gridColor;
+}
+
 const APP = {
   records: [],
   masterData: {},
@@ -211,6 +230,7 @@ function initTheme() {
   const saved = localStorage.getItem("waste-theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
   updateThemeIcon(saved);
+  applyChartDefaults();
   document.getElementById("themeToggle").addEventListener("click", () => {
     const next =
       document.documentElement.getAttribute("data-theme") === "dark"
@@ -219,6 +239,9 @@ function initTheme() {
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("waste-theme", next);
     updateThemeIcon(next);
+    // 테마 전환 시 차트 색상 기본값 갱신 후 현재 페이지 다시 렌더
+    applyChartDefaults();
+    navigateTo(APP.currentPage);
   });
 }
 
@@ -1763,18 +1786,18 @@ function renderStatsDailyTypeChart(records, period) {
               label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}톤`,
             },
           },
-          legend: { position: "bottom" },
+          legend: { position: "bottom", labels: { color: getChartTextColor() } },
         },
         scales: {
           x: {
             stacked: true,
             grid: { display: false },
-            ticks: { color: "rgba(255, 255, 255, 0.5)" },
+            ticks: { color: getChartTextColor() },
           },
           y: {
             stacked: true,
-            grid: { color: "rgba(255, 255, 255, 0.05)" },
-            ticks: { color: "rgba(255, 255, 255, 0.5)" },
+            grid: { color: getChartGridColor() },
+            ticks: { color: getChartTextColor() },
           },
         },
       },
@@ -1837,12 +1860,12 @@ function renderStatsCumulativeChart(records, period) {
         scales: {
           x: {
             grid: { display: false },
-            ticks: { color: "rgba(255, 255, 255, 0.5)" },
+            ticks: { color: getChartTextColor() },
           },
           y: {
             beginAtZero: true,
-            grid: { color: "rgba(255, 255, 255, 0.05)" },
-            ticks: { color: "rgba(255, 255, 255, 0.5)" },
+            grid: { color: getChartGridColor() },
+            ticks: { color: getChartTextColor() },
           },
         },
       },
@@ -2000,17 +2023,17 @@ function renderStatsDetailChart(records) {
         },
         scales: {
           x: {
-            grid: { color: "rgba(255,255,255,0.05)" },
+            grid: { color: getChartGridColor() },
             ticks: {
-              color: "rgba(255,255,255,0.5)",
+              color: getChartTextColor(),
               font: { size: 10 },
             },
           },
           y: {
             beginAtZero: true,
-            grid: { color: "rgba(255,255,255,0.05)" },
+            grid: { color: getChartGridColor() },
             ticks: {
-              color: "rgba(255,255,255,0.5)",
+              color: getChartTextColor(),
               font: { size: 10 },
             },
           },
