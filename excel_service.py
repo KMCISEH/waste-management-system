@@ -23,7 +23,9 @@ def export_to_excel():
         FROM records 
         ORDER BY date DESC, id DESC
     """
-    df = pd.read_sql_query(query, conn)
+    # pandas.read_sql_query는 실제 DB 연결 객체가 필요 (래퍼가 아닌 원본)
+    raw_conn = conn._conn if hasattr(conn, '_conn') else conn
+    df = pd.read_sql_query(query, raw_conn)
     conn.close()
     
     # 기본값 설정
@@ -76,6 +78,9 @@ def _import_dataframe(df):
     conn = get_db_conn()
     cursor = conn.cursor()
     
+    # === 컬럼명 정규화: 앞뒤 공백 및 줄바꿈 제거 ===
+    df.columns = [str(c).strip().replace('\n', ' ') for c in df.columns]
+    
     # NaN 처리 및 유틸리티 함수 정의
     def get_val(r, keys, default=''):
         for k in keys:
@@ -86,43 +91,57 @@ def _import_dataframe(df):
 
     added_count = 0
     skipped_count = 0
+    error_samples = []
     
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
         try:
             # 기본값 설정 및 타입 변환
-            slip_no = str(get_val(row, ['slip_no', '전표번호', '인계번호'])).strip()
+            # 전표번호 매칭: 다양한 컬럼명 지원
+            slip_no = str(get_val(row, [
+                'slip_no', '전표번호', '인계번호', '인계번호(*)', 
+                '전자인계번호', '관리번호', 'No', 'no'
+            ])).strip()
             if not slip_no or slip_no.lower() == 'nan' or slip_no == 'None':
                 continue
                 
-            processor = str(get_val(row, ['processor', '처리업체', '처리자명'])).strip()
+            processor = str(get_val(row, [
+                'processor', '처리업체', '처리자명', '처리업체명', '처리자명(*)'
+            ])).strip()
             
             # 처리업체별 자동 분류(category) 매핑 로직
-            category = str(get_val(row, ['category', '분류', '폐기물분류']))
+            category = str(get_val(row, ['category', '분류', '폐기물분류', '비고']))
             if not category or category.lower() == 'nan' or category == '':
                 if '해동이앤티' in processor: category = "AO-Tar"
                 elif '제일자원' in processor: category = "AO-TAR"
                 elif '디에너지' in processor: category = "메탄올"
+            
             cursor.execute('''
             INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
                 slip_no,
-                str(get_val(row, ['date', '날짜', '인계일자(*)'])),
-                str(get_val(row, ['waste_type', '폐기물종류', '폐기물종류(성상)(*)'])),
-                float(get_val(row, ['amount', '중량', '위탁량(*)'], 0)),
-                str(get_val(row, ['carrier', '운반업체', '운반자명'])),
-                str(get_val(row, ['vehicle_no', '차량번호'])),
-                str(get_val(row, ['processor', '처리업체', '처리자명'])),
-                str(get_val(row, ['note1', '비고1', '처리방법'])),
+                str(get_val(row, ['date', '날짜', '처리일', '인계일자', '인계일자(*)', '일자'])),
+                str(get_val(row, ['waste_type', '폐기물종류', '폐기물명', '폐기물종류(성상)', '폐기물종류(성상)(*)', '품명'])),
+                float(get_val(row, ['amount', '중량', '처리량', '처리량(톤)', '위탁량', '위탁량(*)', '수량'], 0)),
+                str(get_val(row, ['carrier', '운반업체', '운반자명', '운반업체명', '운반자명(*)'])),
+                str(get_val(row, ['vehicle_no', '차량번호', '차량 번호'])),
+                processor,
+                str(get_val(row, ['note1', '비고1', '처리방법', '비고'])),
                 str(get_val(row, ['note2', '비고2'])),
                 category,
-                str(get_val(row, ['supplier', '공급업체'])),
+                str(get_val(row, ['supplier', '공급업체', '장소'])),
                 str(get_val(row, ['status'], 'completed'))
             ))
             added_count += 1
-        except Exception:
+        except Exception as e:
             skipped_count += 1
+            if len(error_samples) < 3:
+                error_samples.append(f"Row {idx}: {str(e)}")
             
     conn.commit()
     conn.close()
-    return {"added": added_count, "skipped": skipped_count}
+    
+    result = {"added": added_count, "skipped": skipped_count, "columns": list(df.columns)}
+    if error_samples:
+        result["error_samples"] = error_samples
+    return result
