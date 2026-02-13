@@ -77,6 +77,7 @@ def _import_dataframe(df):
     """DataFrame 데이터를 DB에 병합 (중복 제외)"""
     conn = get_db_conn()
     cursor = conn.cursor()
+    is_postgres = bool(os.environ.get('DATABASE_URL'))
     
     # === 컬럼명 정규화: 앞뒤 공백 및 줄바꿈 제거 ===
     df.columns = [str(c).strip().replace('\n', ' ') for c in df.columns]
@@ -115,10 +116,7 @@ def _import_dataframe(df):
                 elif '제일자원' in processor: category = "AO-TAR"
                 elif '디에너지' in processor: category = "메탄올"
             
-            cursor.execute('''
-            INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ''', (
+            values = (
                 slip_no,
                 str(get_val(row, ['date', '날짜', '처리일', '인계일자', '인계일자(*)', '일자'])),
                 str(get_val(row, ['waste_type', '폐기물종류', '폐기물명', '폐기물종류(성상)', '폐기물종류(성상)(*)', '품명'])),
@@ -131,8 +129,29 @@ def _import_dataframe(df):
                 category,
                 str(get_val(row, ['supplier', '공급업체', '장소'])),
                 str(get_val(row, ['status'], 'completed'))
-            ))
-            added_count += 1
+            )
+            
+            if is_postgres:
+                # PostgreSQL: SAVEPOINT로 중복 에러가 트랜잭션을 깨지 않도록 보호
+                cursor.execute("SAVEPOINT import_row")
+                try:
+                    cursor.execute('''
+                    INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', values)
+                    cursor.execute("RELEASE SAVEPOINT import_row")
+                    added_count += 1
+                except Exception:
+                    cursor.execute("ROLLBACK TO SAVEPOINT import_row")
+                    skipped_count += 1
+            else:
+                # SQLite: 개별 INSERT 에러가 트랜잭션에 영향 없음
+                cursor.execute('''
+                INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', values)
+                added_count += 1
+                
         except Exception as e:
             skipped_count += 1
             if len(error_samples) < 3:
