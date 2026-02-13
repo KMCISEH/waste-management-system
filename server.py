@@ -79,7 +79,7 @@ def debug_db():
 @app.get("/api/reset-db")
 @app.post("/api/reset-db")
 def reset_database():
-    """DB 초기화: 모든 테이블의 데이터를 삭제합니다."""
+    """DB 초기화: 모든 테이블의 데이터를 삭제하고 초기 데이터를 다시 로드합니다."""
     conn = get_db_conn()
     cursor = conn.cursor()
     try:
@@ -88,9 +88,14 @@ def reset_database():
             cursor.execute(f"DELETE FROM {table}")
         conn.commit()
         conn.close()
-        return {"message": "Database reset successful", "tables_cleared": tables}
+        
+        # 데이터 삭제 후 즉시 자동 시딩 실행
+        auto_seed_db()
+        
+        return {"message": "Database reset and seeded successfully", "tables_cleared": tables}
     except Exception as e:
-        conn.close()
+        if conn:
+            conn.close()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/records")
@@ -182,21 +187,6 @@ def delete_all_records():
     conn.close()
     return {"message": "All records deleted"}
 
-@app.post("/api/reset-db")
-def reset_database():
-    """DB 초기화: 모든 테이블의 데이터를 삭제합니다."""
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        tables = ["records", "schedules", "liquid_waste"]
-        for table in tables:
-            cursor.execute(f"DELETE FROM {table}")
-        conn.commit()
-        conn.close()
-        return {"message": "Database reset successful", "tables_cleared": tables}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 # --- 일정 관리 API ---
 
