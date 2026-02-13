@@ -55,6 +55,21 @@ async def add_cors_header(request: Request, call_next):
 def health_check():
     return {"status": "healthy", "environment": os.environ.get("RENDER", "local")}
 
+@app.get("/api/debug-db")
+def debug_db():
+    try:
+        conn = get_db_conn()
+        res = {"type": str(type(conn))}
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM records")
+        res["records_count"] = cursor.fetchone()["count"]
+        cursor.execute("SELECT COUNT(*) as count FROM schedules")
+        res["schedules_count"] = cursor.fetchone()["count"]
+        conn.close()
+        return res
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/reset-db")
 @app.post("/api/reset-db")
 def reset_database():
