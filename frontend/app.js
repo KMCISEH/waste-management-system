@@ -4,14 +4,18 @@
 
 // === CHART THEME HELPERS ===
 function getChartTextColor() {
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue("--text-primary")
-    .trim() || "#94a3b8";
+  return (
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--text-primary")
+      .trim() || "#94a3b8"
+  );
 }
 function getChartGridColor() {
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue("--border")
-    .trim() || "rgba(100,116,139,0.15)";
+  return (
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--border")
+      .trim() || "rgba(100,116,139,0.15)"
+  );
 }
 // Chart.js 전역 기본값 - 테마 전환 시에도 적용
 function applyChartDefaults() {
@@ -41,12 +45,10 @@ const APP = {
   get isReadOnly() {
     return !this.adminToken;
   },
-  // API 베이스 URL 설정
+  // API 베이스 URL 설정 (사내 전용: 항상 상대 경로)
   get apiBase() {
-    // 로컬 접속이거나 Render 사이트에서 직접 접속한 경우 상대 경로 사용
-    const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    const isRender = window.location.hostname === "waste-api-3j2l.onrender.com";
-    return (isLocal || isRender) ? "" : "https://waste-api-3j2l.onrender.com";
+    // 사내 시스템: 항상 로컬 서버(상대 경로)와 통신
+    return "";
   },
 };
 
@@ -73,7 +75,8 @@ function closeLoginModal() {
 async function adminLogin() {
   const pw = document.getElementById("adminPassword").value;
   if (!pw) {
-    document.getElementById("loginError").textContent = "비밀번호를 입력하세요.";
+    document.getElementById("loginError").textContent =
+      "비밀번호를 입력하세요.";
     document.getElementById("loginError").style.display = "block";
     return;
   }
@@ -93,7 +96,8 @@ async function adminLogin() {
       // 현재 페이지 다시 렌더링 (버튼 표시 업데이트)
       navigateTo(APP.currentPage);
     } else {
-      document.getElementById("loginError").textContent = data.detail || "비밀번호가 틀렸습니다.";
+      document.getElementById("loginError").textContent =
+        data.detail || "비밀번호가 틀렸습니다.";
       document.getElementById("loginError").style.display = "block";
     }
   } catch (e) {
@@ -169,8 +173,12 @@ async function loadData() {
     initDashboard(); // 대시보드 초기화 추가
   } catch (e) {
     console.error("데이터 로딩 실패 상세:", e);
-    showToast(`서버 연결 실패 (${APP.apiBase || 'Local'}): ${e.message}`, "error");
-    document.getElementById("lastSync").textContent = "연결 실패 (Console 확인)";
+    showToast(
+      `서버 연결 실패 (${APP.apiBase || "Local"}): ${e.message}`,
+      "error",
+    );
+    document.getElementById("lastSync").textContent =
+      "연결 실패 (Console 확인)";
   }
 }
 
@@ -204,6 +212,7 @@ function navigateTo(page, updateHash = true) {
     records: "전자인계서 이력",
     stats: "통계 분석",
     "liquid-waste": "팀별 액상폐기물 관리",
+    cost: "비용 정산",
   };
   const title = titles[page] || "지정폐기물 관리";
   document.querySelector(
@@ -224,6 +233,7 @@ function navigateTo(page, updateHash = true) {
   if (page === "records") renderRecordsTable();
   if (page === "dashboard") initDashboard();
   if (page === "liquid-waste") initLiquidWastePage();
+  if (page === "cost") initCostPage();
 }
 
 function initTheme() {
@@ -508,7 +518,10 @@ async function deleteRecordAction(id) {
       method: "DELETE",
       headers: { ...getAdminHeaders() },
     });
-    if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : "삭제 실패");
+    if (!res.ok)
+      throw new Error(
+        res.status === 403 ? "관리자 인증이 필요합니다." : "삭제 실패",
+      );
     await loadData();
     renderDashboard();
     if (APP.currentPage === "records") renderRecordsTable();
@@ -670,7 +683,10 @@ async function editRecordAction(id) {
         headers: { "Content-Type": "application/json", ...getAdminHeaders() },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : await res.text());
+      if (!res.ok)
+        throw new Error(
+          res.status === 403 ? "관리자 인증이 필요합니다." : await res.text(),
+        );
       await loadData();
       renderDashboard();
       if (APP.currentPage === "records") renderRecordsTable();
@@ -869,15 +885,15 @@ function renderCalendar() {
         </div>
         <div class="calendar-events">
           ${daySchedules
-            .map(
-              (s) => `
+        .map(
+          (s) => `
             <div class="calendar-event style-${(s.id % 6) + 1} ${s.status === "completed" ? "completed" : ""}" 
                  ${APP.isReadOnly ? "" : `onclick="event.stopPropagation(); openScheduleModal('${dateStr}', ${s.id})"`}>
               ${s.content}${s.status === "completed" ? " (수거완료)" : ""}
             </div>
           `,
-            )
-            .join("")}
+        )
+        .join("")}
         </div>
       </div>
     `;
@@ -972,7 +988,9 @@ async function saveSchedule(id = null) {
   const data = { date, content, status };
 
   try {
-    const url = id ? `${APP.apiBase}/api/schedules/${id}` : `${APP.apiBase}/api/schedules`;
+    const url = id
+      ? `${APP.apiBase}/api/schedules/${id}`
+      : `${APP.apiBase}/api/schedules`;
     const method = id ? "PUT" : "POST";
 
     const res = await fetch(url, {
@@ -981,7 +999,10 @@ async function saveSchedule(id = null) {
       body: JSON.stringify(data),
     });
 
-    if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : "저장 실패");
+    if (!res.ok)
+      throw new Error(
+        res.status === 403 ? "관리자 인증이 필요합니다." : "저장 실패",
+      );
 
     document.getElementById("modalOverlay").classList.remove("active");
     showToast(
@@ -998,8 +1019,14 @@ async function deleteScheduleAction(id) {
   if (!confirm("정말 이 일정을 삭제하시겠습니까?")) return;
 
   try {
-    const res = await fetch(`${APP.apiBase}/api/schedules/${id}`, { method: "DELETE", headers: { ...getAdminHeaders() } });
-    if (!res.ok) throw new Error(res.status === 403 ? "관리자 인증이 필요합니다." : "삭제 실패");
+    const res = await fetch(`${APP.apiBase}/api/schedules/${id}`, {
+      method: "DELETE",
+      headers: { ...getAdminHeaders() },
+    });
+    if (!res.ok)
+      throw new Error(
+        res.status === 403 ? "관리자 인증이 필요합니다." : "삭제 실패",
+      );
 
     document.getElementById("modalOverlay").classList.remove("active");
     showToast("일정이 삭제되었습니다.", "warning");
@@ -1197,7 +1224,11 @@ async function handleGlobalFileUpload(file) {
 
   try {
     showToast("파일 분석 및 반영 중...", "info");
-    const resp = await fetch(endpoint, { method: "POST", body: formData, headers: { ...getAdminHeaders() } });
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      body: formData,
+      headers: { ...getAdminHeaders() },
+    });
     const result = await resp.json();
     if (resp.ok) {
       showToast(
@@ -1238,18 +1269,17 @@ function renderRecordsTable() {
             <td>${r.category || "-"}</td>
             <td><span class="badge-location">${r.location}</span></td>
             <td>
-                ${
-                  APP.isReadOnly
-                    ? `
+                ${APP.isReadOnly
+            ? `
                   <span class="badge" style="background:var(--bg-card);color:var(--text-muted);border:1px solid var(--border);">조회모드</span>
                 `
-                    : `
+            : `
                   <div style="display:flex;gap:4px;">
                       <button class="btn btn-ghost btn-xs" onclick="editRecordAction(${r.id})"><i class="fas fa-edit"></i></button>
                       <button class="btn btn-ghost btn-xs" onclick="deleteRecordAction(${r.id})"><i class="fas fa-trash"></i></button>
                   </div>
                 `
-                }
+          }
             </td>
         </tr>
     `,
@@ -1273,13 +1303,13 @@ function initStatsPage() {
 
   document.querySelectorAll(".period-tab").forEach(
     (tab) =>
-      (tab.onclick = () => {
-        document
-          .querySelectorAll(".period-tab")
-          .forEach((t) => t.classList.remove("active"));
-        tab.classList.add("active");
-        renderStatsCharts();
-      }),
+    (tab.onclick = () => {
+      document
+        .querySelectorAll(".period-tab")
+        .forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      renderStatsCharts();
+    }),
   );
   document.getElementById("statsYear").onchange = renderStatsCharts;
   document.getElementById("btnExportStats").onclick = exportStatsCSV;
@@ -1616,7 +1646,8 @@ function changePageSize(size) {
   APP.recordsPage = 1;
   // 버튼 활성화 상태 업데이트
   document.querySelectorAll(".page-size-btn").forEach((btn) => {
-    const btnSize = btn.dataset.size === "all" ? 9999 : parseInt(btn.dataset.size);
+    const btnSize =
+      btn.dataset.size === "all" ? 9999 : parseInt(btn.dataset.size);
     btn.classList.toggle("active", btnSize === size);
   });
   renderRecordsTable();
@@ -1630,7 +1661,8 @@ function renderPagination(total, items) {
   // 페이지 수가 많으면 축약 표시
   const maxButtons = 10;
   const current = APP.recordsPage;
-  let start = 1, end = total;
+  let start = 1,
+    end = total;
 
   if (total > maxButtons) {
     start = Math.max(1, current - Math.floor(maxButtons / 2));
@@ -1640,7 +1672,8 @@ function renderPagination(total, items) {
 
   if (start > 1) {
     addPageBtn(p, 1);
-    if (start > 2) p.insertAdjacentHTML("beforeend", '<span class="page-dots">...</span>');
+    if (start > 2)
+      p.insertAdjacentHTML("beforeend", '<span class="page-dots">...</span>');
   }
 
   for (let i = start; i <= end; i++) {
@@ -1648,7 +1681,8 @@ function renderPagination(total, items) {
   }
 
   if (end < total) {
-    if (end < total - 1) p.insertAdjacentHTML("beforeend", '<span class="page-dots">...</span>');
+    if (end < total - 1)
+      p.insertAdjacentHTML("beforeend", '<span class="page-dots">...</span>');
     addPageBtn(p, total);
   }
 }
@@ -1661,7 +1695,9 @@ function addPageBtn(container, pageNum) {
     APP.recordsPage = pageNum;
     renderRecordsTable();
     // 테이블 상단으로 스크롤
-    document.getElementById("page-records").scrollIntoView({ behavior: "smooth", block: "start" });
+    document
+      .getElementById("page-records")
+      .scrollIntoView({ behavior: "smooth", block: "start" });
   };
   container.appendChild(btn);
 }
@@ -1786,7 +1822,10 @@ function renderStatsDailyTypeChart(records, period) {
               label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}톤`,
             },
           },
-          legend: { position: "bottom", labels: { color: getChartTextColor() } },
+          legend: {
+            position: "bottom",
+            labels: { color: getChartTextColor() },
+          },
         },
         scales: {
           x: {
@@ -1805,46 +1844,60 @@ function renderStatsDailyTypeChart(records, period) {
   );
 }
 
-// 2. 누적 처리량 추이 - Line Chart
+// 2. 주간 처리량 - Bar Chart
 function renderStatsCumulativeChart(records, period) {
-  // 날짜별 총 처리량 계산
-  const dailyTotal = {};
+  // 항상 ISO 주 단위로 실제 인계서 데이터 집계
+  // key: "YYYY-WNN" (정렬·참조용), displayLabel: "M월 N주" (화면 표시용)
+  const weeklyTotal = {};   // key → amount
+  const weekLabel = {};     // key → "M월 N주"
+
   records.forEach((r) => {
-    if (!r.date) return;
-    let key = r.date;
-    if (period === "yearly") key = r.date.substring(0, 7);
+    if (!r.date || !r.amount) return;
+    const d = new Date(r.date);
+    // ISO 주 번호 계산: 월요일 시작 기준
+    const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay(); // 1(월)~7(일)
+    const nearestThursday = new Date(d);
+    nearestThursday.setDate(d.getDate() + (4 - dayOfWeek));
+    const yearStart = new Date(nearestThursday.getFullYear(), 0, 1);
+    const isoWeek = Math.ceil(((nearestThursday - yearStart) / 86400000 + 1) / 7);
+    const isoYear = nearestThursday.getFullYear();
 
-    dailyTotal[key] = (dailyTotal[key] || 0) + (r.amount || 0);
+    const key = `${isoYear}-W${String(isoWeek).padStart(2, "0")}`;
+    weeklyTotal[key] = (weeklyTotal[key] || 0) + (r.amount || 0);
+
+    // 해당 주의 월요일 날짜 기준으로 "M월 N주" 레이블 생성
+    if (!weekLabel[key]) {
+      // 그 주의 첫째 날(원본 날짜 기준 월요일)
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - (dayOfWeek - 1));
+      const mon = monday.getMonth() + 1; // 1~12
+      // 해당 월에서 몇 번째 주인지 (월의 1일이 속한 주 = 1주)
+      const firstDayOfMonth = new Date(monday.getFullYear(), monday.getMonth(), 1);
+      const weekOfMonth = Math.ceil((monday.getDate() + firstDayOfMonth.getDay()) / 7);
+      weekLabel[key] = `${mon}월 ${weekOfMonth}주`;
+    }
   });
 
-  const labels = Object.keys(dailyTotal).sort();
-
-  // 누적 계산
-  let cumulative = 0;
-  const data = labels.map((date) => {
-    cumulative += dailyTotal[date];
-    return cumulative;
-  });
+  const sortedKeys = Object.keys(weeklyTotal).sort();
+  const labels = sortedKeys.map((k) => weekLabel[k] || k);
+  const data = sortedKeys.map((k) => parseFloat(weeklyTotal[k].toFixed(2)));
 
   if (APP.charts.statsCumulative) APP.charts.statsCumulative.destroy();
 
   APP.charts.statsCumulative = new Chart(
     document.getElementById("statsCumulativeChart"),
     {
-      type: "line",
+      type: "bar",
       data: {
         labels: labels,
         datasets: [
           {
-            label: "누적 처리량 (톤)",
+            label: "처리량 (톤)",
             data: data,
+            backgroundColor: "rgba(16, 185, 129, 0.75)",
             borderColor: "#10b981",
-            backgroundColor: "rgba(16, 185, 129, 0.1)",
-            borderWidth: 2,
-            pointBackgroundColor: "#10b981",
-            pointRadius: 3,
-            fill: true,
-            tension: 0.4,
+            borderWidth: 1,
+            borderRadius: 4,
           },
         ],
       },
@@ -1854,6 +1907,9 @@ function renderStatsCumulativeChart(records, period) {
           tooltip: {
             intersect: false,
             mode: "index",
+            callbacks: {
+              label: (ctx) => `처리량: ${ctx.raw}톤`,
+            },
           },
           legend: { display: false },
         },
@@ -1865,7 +1921,10 @@ function renderStatsCumulativeChart(records, period) {
           y: {
             beginAtZero: true,
             grid: { color: getChartGridColor() },
-            ticks: { color: getChartTextColor() },
+            ticks: {
+              color: getChartTextColor(),
+              callback: (v) => v + "톤",
+            },
           },
         },
       },
@@ -2663,4 +2722,573 @@ function renderLiquidWasteSummaryTable(data) {
   bodyHtml += `<td>${grandTotal.toFixed(2)}</td></tr>`;
 
   document.getElementById("lwSummaryBody").innerHTML = bodyHtml;
+}
+
+// ================================================
+// 비용 정산 관리 페이지
+// ================================================
+
+// 단가 설정 (부가세 별도, 원 단위)
+const COST_CONFIG = {
+  // 처리비: processor → { default 또는 wasteType별 단가 }
+  processing: {
+    "해동이앤티": { default: 50000 },
+    "제일자원": { default: 50000 },
+    "와이엔텍": {
+      "고상": 380000,
+      "액상": 500000,
+      "폐유기용제": 350000,
+    },
+    "디에너지": { default: 0 },  // 무상
+    "씨이케이": { default: 0 },  // 단가 미정 → 0원 처리
+  },
+  // 운반비: carrier=가야이앤티일 때 processor별
+  transport: {
+    "가야이앤티": {
+      "제일자원": 150000,
+      "디에너지": 50000,
+    },
+  },
+  // 잡이익: processor=유광드럼
+  revenue: {
+    "폐공드럼": 2500,   // 개당
+    "폐IBC": 20000,     // 개당
+  },
+};
+
+let costInitialized = false;
+
+function initCostPage() {
+  if (!costInitialized) {
+    populateYearSelect("costYear");
+    document.getElementById("costYear").onchange = renderCostPage;
+    document.getElementById("costMonth").onchange = renderCostPage;
+    document.getElementById("btnExportCostExcel").onclick = exportCostExcel;
+    costInitialized = true;
+  }
+  renderCostPage();
+}
+
+function getPhaseFromWaste(wasteName) {
+  const wn = (wasteName || "").toLowerCase();
+  if (wn.includes("고상") || wn.includes("고체")) return "고상";
+  if (wn.includes("액상") || wn.includes("액체")) return "액상";
+  if (wn.includes("기타")) return "기타";
+  return "액상";  // 기본값
+}
+
+function getClassCode(wasteName) {
+  const wn = (wasteName || "");
+  if (wn.includes("폐유기용제")) return "040200";
+  if (wn.includes("유해화학물질") || wn.includes("폐유독물질")) return "090300";
+  if (wn.includes("폐수처리오니")) return "040200";
+  return "";
+}
+
+async function exportCostExcel() {
+  const year = document.getElementById("costYear").value || new Date().getFullYear().toString();
+  const month = document.getElementById("costMonth").value;
+
+  if (!month || month === "all") {
+    showToast("엑셀 출력을 위해 월을 선택해주세요.", "warning");
+    return;
+  }
+
+  const yearMonth = `${year}-${month}`;
+  const filtered = APP.records.filter((r) => r.date && r.date.startsWith(yearMonth));
+
+  if (filtered.length === 0) {
+    showToast("해당 월의 데이터가 없습니다.", "warning");
+    return;
+  }
+
+  // 3개 섹션 분류
+  const processing = [];  // 처리비용
+  const transport = [];   // 운반비용
+  const revenue = [];     // 잡이익
+
+  // 업체+폐기물별 집계
+  const procMap = {};     // key: processor_wasteName → 처리비
+  const transMap = {};    // key: carrier_processor_note → 운반비
+  const drumMap = { drums: 0, ibcs: 0 };
+
+  filtered.forEach((r) => {
+    const procNorm = normalizeProcessor(r.processor);
+    const carrierNorm = normalizeProcessor(r.carrier || "");
+    const amount = r.amount || 0;
+    const wasteName = r.wasteName || "";
+    const phase = getPhaseFromWaste(wasteName);
+    const classCode = getClassCode(wasteName);
+
+    // 1) 처리비 (유광드럼 제외)
+    if (!procNorm.includes("유광드럼")) {
+      const costPerTon = getProcessingCostPerTon(procNorm, wasteName);
+      const pKey = `${procNorm}_${shortenWasteName(wasteName)}`;
+      if (!procMap[pKey]) {
+        procMap[pKey] = {
+          processor: procNorm,
+          wasteName: shortenWasteName(wasteName),
+          phase,
+          classCode,
+          amount: 0,
+          unitCost: costPerTon,
+          cost: 0,
+          note: r.category || "",
+        };
+      }
+      procMap[pKey].amount += amount;
+      procMap[pKey].cost += Math.round(costPerTon * amount);
+      // 비고에 category 정보 추가
+      if (r.category && !procMap[pKey].note.includes(r.category)) {
+        procMap[pKey].note = r.category;
+      }
+    }
+
+    // 2) 운반비
+    const transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
+    if (transportPerTon > 0) {
+      const tKey = `${carrierNorm}_${procNorm}_${r.category || ""}`;
+      if (!transMap[tKey]) {
+        transMap[tKey] = {
+          carrier: carrierNorm,
+          wasteName: shortenWasteName(wasteName),
+          phase,
+          classCode,
+          amount: 0,
+          unitCost: transportPerTon,
+          cost: 0,
+          note: r.category || "",
+        };
+      }
+      transMap[tKey].amount += amount;
+      transMap[tKey].cost += Math.round(transportPerTon * amount);
+    }
+
+    // 3) 잡이익 (유광드럼)
+    if (procNorm.includes("유광드럼")) {
+      const { drums, ibcs } = parseDrumIbcCount(r.category);
+      drumMap.drums += drums;
+      drumMap.ibcs += ibcs;
+    }
+  });
+
+  // 처리비 배열 구성
+  Object.values(procMap).forEach((p) => processing.push(p));
+
+  // 운반비 배열 구성
+  Object.values(transMap).forEach((t) => transport.push(t));
+
+  // 잡이익 배열 구성
+  if (drumMap.drums > 0) {
+    revenue.push({
+      processor: "유광드럼",
+      wasteName: shortenWasteName(filtered.find(r => normalizeProcessor(r.processor).includes("유광드럼"))?.wasteName || ""),
+      type: "철드럼",
+      classCode: "090300",
+      ea: drumMap.drums,
+      unitCost: COST_CONFIG.revenue["폐공드럼"],
+      cost: drumMap.drums * COST_CONFIG.revenue["폐공드럼"],
+      note: "재활용",
+    });
+  }
+  if (drumMap.ibcs > 0) {
+    revenue.push({
+      processor: "유광드럼",
+      wasteName: shortenWasteName(filtered.find(r => normalizeProcessor(r.processor).includes("유광드럼"))?.wasteName || ""),
+      type: "IBC용기",
+      classCode: "090300",
+      ea: drumMap.ibcs,
+      unitCost: COST_CONFIG.revenue["폐IBC"],
+      cost: drumMap.ibcs * COST_CONFIG.revenue["폐IBC"],
+      note: "재활용",
+    });
+  }
+
+  const payload = { yearMonth, processing, transport, revenue };
+
+  try {
+    showToast("엑셀 파일 생성 중...", "info");
+    const resp = await fetch(`${APP.apiBase}/api/export/excel/cost`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error("파일 생성 실패");
+
+    const blob = await resp.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `비용정산_${yearMonth}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+    showToast("엑셀 다운로드 완료!", "success");
+  } catch (e) {
+    showToast("엑셀 생성 실패: " + e.message, "error");
+  }
+}
+
+function getProcessingCostPerTon(processorNorm, wasteName) {
+  // processor 매칭 (normalizeProcessor 결과와 비교)
+  for (const [key, rates] of Object.entries(COST_CONFIG.processing)) {
+    if (processorNorm.includes(key)) {
+      if (rates.default !== undefined) return rates.default;
+      // 와이엔텍처럼 폐기물 종류별 단가
+      const wn = (wasteName || "").toLowerCase();
+      if (wn.includes("폐유기용제")) return rates["폐유기용제"] || 0;
+      if (wn.includes("고상") || wn.includes("고체")) return rates["고상"] || 0;
+      if (wn.includes("액상") || wn.includes("액체")) return rates["액상"] || 0;
+      // 기타 → 고상 기본값
+      return rates["고상"] || 0;
+    }
+  }
+  return 0;
+}
+
+function getTransportCostPerTon(carrierNorm, processorNorm) {
+  for (const [carrierKey, destMap] of Object.entries(COST_CONFIG.transport)) {
+    if (carrierNorm.includes(carrierKey)) {
+      for (const [destKey, cost] of Object.entries(destMap)) {
+        if (processorNorm.includes(destKey)) return cost;
+      }
+    }
+  }
+  return 0;
+}
+
+function parseDrumIbcCount(category) {
+  let drums = 0, ibcs = 0;
+  if (!category) return { drums, ibcs };
+  const drumMatch = category.match(/폐공드럼\s*(\d+)/);
+  const ibcMatch = category.match(/폐IBC\s*(\d+)/);
+  if (drumMatch) drums = parseInt(drumMatch[1], 10);
+  if (ibcMatch) ibcs = parseInt(ibcMatch[1], 10);
+  return { drums, ibcs };
+}
+
+function calculateMonthlyCost(records) {
+  // monthKey → { processCost, transportCost, revenue, details[] }
+  const monthlyMap = {};
+
+  records.forEach((r) => {
+    if (!r.date) return;
+    const monthKey = r.date.substring(0, 7); // YYYY-MM
+    if (!monthlyMap[monthKey]) {
+      monthlyMap[monthKey] = { processCost: 0, transportCost: 0, revenue: 0, details: [] };
+    }
+    const m = monthlyMap[monthKey];
+    const procNorm = normalizeProcessor(r.processor);
+    const carrierNorm = normalizeProcessor(r.carrier || "");
+    const amount = r.amount || 0;
+
+    // 1) 처리비 계산
+    const costPerTon = getProcessingCostPerTon(procNorm, r.wasteName);
+    const processCost = Math.round(costPerTon * amount);
+
+    // 2) 운반비 계산
+    const transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
+    const transportCost = Math.round(transportPerTon * amount);
+
+    // 3) 잡이익 계산 (유광드럼인 경우)
+    let revenue = 0;
+    if (procNorm.includes("유광드럼")) {
+      const { drums, ibcs } = parseDrumIbcCount(r.category);
+      revenue = drums * COST_CONFIG.revenue["폐공드럼"] + ibcs * COST_CONFIG.revenue["폐IBC"];
+    }
+
+    m.processCost += processCost;
+    m.transportCost += transportCost;
+    m.revenue += revenue;
+
+    m.details.push({
+      date: r.date,
+      processor: procNorm,
+      carrier: carrierNorm,
+      wasteName: shortenWasteName(r.wasteName),
+      amount,
+      category: r.category || "",
+      processCost,
+      transportCost,
+      revenue,
+      costPerTon,
+      transportPerTon,
+    });
+  });
+
+  return monthlyMap;
+}
+
+function renderCostPage() {
+  const year = document.getElementById("costYear").value || new Date().getFullYear().toString();
+  const month = document.getElementById("costMonth").value;
+
+  // 해당 연도 레코드 필터
+  let filtered = APP.records.filter((r) => r.date && r.date.startsWith(year));
+
+  // 월별 비용 계산 (차트를 위해 전체 연도 계산)
+  const allMonthly = calculateMonthlyCost(filtered);
+
+  // 선택 월 필터
+  if (month && month !== "all") {
+    filtered = filtered.filter((r) => r.date && r.date.split("-")[1] === month);
+  }
+
+  const monthlyData = calculateMonthlyCost(filtered);
+
+  // 합계
+  let totalProcess = 0, totalTransport = 0, totalRevenue = 0;
+  for (const m of Object.values(monthlyData)) {
+    totalProcess += m.processCost;
+    totalTransport += m.transportCost;
+    totalRevenue += m.revenue;
+  }
+  const totalNet = totalProcess + totalTransport - totalRevenue;
+
+  // 요약 카드
+  document.getElementById("costTotalProcess").innerHTML =
+    `${totalProcess.toLocaleString()}<small>원</small>`;
+  document.getElementById("costTotalTransport").innerHTML =
+    `${totalTransport.toLocaleString()}<small>원</small>`;
+  document.getElementById("costTotalRevenue").innerHTML =
+    `${totalRevenue.toLocaleString()}<small>원</small>`;
+  document.getElementById("costTotalNet").innerHTML =
+    `${totalNet.toLocaleString()}<small>원</small>`;
+
+  // 업체별 → 폐기물 종류별 2중 집계
+  const byProcessor = {};
+  for (const m of Object.values(monthlyData)) {
+    m.details.forEach((d) => {
+      const pKey = d.processor;
+      if (!byProcessor[pKey]) {
+        byProcessor[pKey] = {
+          processor: pKey,
+          totalAmount: 0,
+          processCost: 0,
+          transportCost: 0,
+          revenue: 0,
+          drums: 0,
+          ibcs: 0,
+          byWaste: {},  // 폐기물 종류별 세부
+        };
+      }
+      const bp = byProcessor[pKey];
+      bp.totalAmount += d.amount;
+      bp.processCost += d.processCost;
+      bp.transportCost += d.transportCost;
+      bp.revenue += d.revenue;
+      if (d.processor.includes("유광드럼")) {
+        const { drums, ibcs } = parseDrumIbcCount(d.category);
+        bp.drums += drums;
+        bp.ibcs += ibcs;
+      }
+
+      // 폐기물 종류별 세부 집계
+      const wKey = d.wasteName || "기타";
+      if (!bp.byWaste[wKey]) {
+        bp.byWaste[wKey] = {
+          wasteName: wKey,
+          amount: 0,
+          costPerTon: d.costPerTon,
+          processCost: 0,
+          transportCost: 0,
+          revenue: 0,
+          drums: 0,
+          ibcs: 0,
+        };
+      }
+      const bw = bp.byWaste[wKey];
+      bw.amount += d.amount;
+      bw.processCost += d.processCost;
+      bw.transportCost += d.transportCost;
+      bw.revenue += d.revenue;
+      if (d.processor.includes("유광드럼")) {
+        const { drums, ibcs } = parseDrumIbcCount(d.category);
+        bw.drums += drums;
+        bw.ibcs += ibcs;
+      }
+    });
+  }
+
+  // 테이블 헤더
+  document.getElementById("costDetailHead").innerHTML = `<tr>
+    <th>처리업체 / 폐기물 종류</th>
+    <th>처리량<br><small>(톤)</small></th>
+    <th>단가<br><small>(원/톤)</small></th>
+    <th>처리비<br><small>(원)</small></th>
+    <th>운반비<br><small>(원)</small></th>
+    <th>잡이익<br><small>(원)</small></th>
+    <th>소계<br><small>(원)</small></th>
+  </tr>`;
+
+  // 테이블 바디
+  const processors = Object.values(byProcessor).sort((a, b) =>
+    (b.processCost + b.transportCost) - (a.processCost + a.transportCost)
+  );
+
+  if (processors.length === 0) {
+    document.getElementById("costDetailBody").innerHTML =
+      '<tr><td colspan="7" style="text-align:center;padding:20px;">데이터가 없습니다.</td></tr>';
+  } else {
+    let bodyHtml = "";
+
+    processors.forEach((p) => {
+      const subtotal = p.processCost + p.transportCost - p.revenue;
+      const wasteTypes = Object.values(p.byWaste).sort((a, b) => b.processCost - a.processCost);
+      const hasMultipleWastes = wasteTypes.length > 1;
+
+      // 업체 헤더 행 (여러 폐기물 종류가 있을 때만)
+      if (hasMultipleWastes) {
+        let extraInfo = "";
+        if (p.drums > 0 || p.ibcs > 0) {
+          const parts = [];
+          if (p.drums > 0) parts.push(`폐공드럼 ${p.drums.toLocaleString()}개`);
+          if (p.ibcs > 0) parts.push(`폐IBC ${p.ibcs.toLocaleString()}개`);
+          extraInfo = ` <small style="color:var(--text-muted)">(${parts.join(", ")})</small>`;
+        }
+        bodyHtml += `<tr style="background:var(--bg-glass);">
+          <td colspan="7" style="text-align:left;"><strong><i class="fas fa-building" style="margin-right:6px;color:var(--primary-light);"></i>${p.processor}</strong>${extraInfo}</td>
+        </tr>`;
+      }
+
+      // 폐기물 종류별 상세 행
+      wasteTypes.forEach((w) => {
+        const wSubtotal = w.processCost + w.transportCost - w.revenue;
+        let drumInfo = "";
+        if (w.drums > 0 || w.ibcs > 0) {
+          const parts = [];
+          if (w.drums > 0) parts.push(`폐공드럼 ${w.drums.toLocaleString()}개`);
+          if (w.ibcs > 0) parts.push(`폐IBC ${w.ibcs.toLocaleString()}개`);
+          drumInfo = `<br><small style="color:var(--text-muted)">${parts.join(", ")}</small>`;
+        }
+
+        const indent = hasMultipleWastes ? 'style="padding-left:32px;"' : '';
+        const label = hasMultipleWastes
+          ? `<span style="color:var(--text-secondary);">└</span> ${w.wasteName}${drumInfo}`
+          : `<strong>${p.processor}</strong><br><small style="color:var(--text-muted)">${w.wasteName}</small>${drumInfo}`;
+
+        bodyHtml += `<tr>
+          <td ${indent}>${label}</td>
+          <td>${w.amount.toFixed(2)}</td>
+          <td>${w.costPerTon > 0 ? w.costPerTon.toLocaleString() : "-"}</td>
+          <td style="color:var(--danger)">${w.processCost > 0 ? w.processCost.toLocaleString() : "-"}</td>
+          <td style="color:var(--warning)">${w.transportCost > 0 ? w.transportCost.toLocaleString() : "-"}</td>
+          <td style="color:var(--success)">${w.revenue > 0 ? w.revenue.toLocaleString() : "-"}</td>
+          <td>${wSubtotal.toLocaleString()}</td>
+        </tr>`;
+      });
+
+      // 업체 소계 행 (여러 폐기물 종류가 있을 때만)
+      if (hasMultipleWastes) {
+        bodyHtml += `<tr style="background:var(--bg-glass);font-weight:600;">
+          <td style="text-align:right;">소계</td>
+          <td>${p.totalAmount.toFixed(2)}</td>
+          <td>-</td>
+          <td style="color:var(--danger)">${p.processCost > 0 ? p.processCost.toLocaleString() : "-"}</td>
+          <td style="color:var(--warning)">${p.transportCost > 0 ? p.transportCost.toLocaleString() : "-"}</td>
+          <td style="color:var(--success)">${p.revenue > 0 ? p.revenue.toLocaleString() : "-"}</td>
+          <td><strong>${subtotal.toLocaleString()}</strong></td>
+        </tr>`;
+      }
+    });
+
+    // 합계 행
+    bodyHtml += `<tr style="background:var(--bg-secondary);font-weight:bold;">
+      <td>합 계</td>
+      <td>${processors.reduce((s, p) => s + p.totalAmount, 0).toFixed(2)}</td>
+      <td>-</td>
+      <td style="color:var(--danger)">${totalProcess.toLocaleString()}</td>
+      <td style="color:var(--warning)">${totalTransport.toLocaleString()}</td>
+      <td style="color:var(--success)">${totalRevenue.toLocaleString()}</td>
+      <td>${totalNet.toLocaleString()}</td>
+    </tr>`;
+
+    document.getElementById("costDetailBody").innerHTML = bodyHtml;
+  }
+
+  // 월별 비용 추이 차트
+  renderCostTrendChart(allMonthly);
+}
+
+function renderCostTrendChart(monthlyData) {
+  const months = Object.keys(monthlyData).sort();
+  const labels = months.map((m) => {
+    const [, mon] = m.split("-");
+    return `${parseInt(mon)}월`;
+  });
+
+  const processData = months.map((m) => monthlyData[m].processCost);
+  const transportData = months.map((m) => monthlyData[m].transportCost);
+  const revenueData = months.map((m) => -monthlyData[m].revenue);
+
+  if (APP.charts.costTrend) APP.charts.costTrend.destroy();
+
+  APP.charts.costTrend = new Chart(document.getElementById("costTrendChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "처리비",
+          data: processData,
+          backgroundColor: "rgba(239, 68, 68, 0.75)",
+          borderColor: "#ef4444",
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: "운반비",
+          data: transportData,
+          backgroundColor: "rgba(245, 158, 11, 0.75)",
+          borderColor: "#f59e0b",
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: "잡이익",
+          data: revenueData,
+          backgroundColor: "rgba(16, 185, 129, 0.75)",
+          borderColor: "#10b981",
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const val = Math.abs(ctx.raw);
+              const prefix = ctx.raw < 0 ? "-" : "";
+              return `${ctx.dataset.label}: ${prefix}${val.toLocaleString()}원`;
+            },
+          },
+        },
+        legend: {
+          position: "bottom",
+          labels: { color: getChartTextColor() },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: getChartTextColor() },
+        },
+        y: {
+          grid: { color: getChartGridColor() },
+          ticks: {
+            color: getChartTextColor(),
+            callback: (v) => {
+              if (Math.abs(v) >= 1000000) return (v / 10000).toLocaleString() + "만";
+              return v.toLocaleString();
+            },
+          },
+        },
+      },
+    },
+  });
 }

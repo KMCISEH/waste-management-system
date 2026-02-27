@@ -340,6 +340,22 @@ async def export_excel_filtered(data: List[Dict[str, Any]] = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/export/excel/cost")
+async def export_cost_excel(data: Dict[str, Any] = Body(...)):
+    try:
+        output = excel_service.export_cost_settlement_excel(data)
+        ym = data.get('yearMonth', '')
+        fname = f"cost_settlement_{ym}.xlsx" if ym else "cost_settlement.xlsx"
+        from urllib.parse import quote
+        fname_utf8 = quote(f"비용정산_{ym}.xlsx") if ym else quote("비용정산.xlsx")
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={fname}; filename*=UTF-8''{fname_utf8}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/import/excel")
 async def import_excel(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
     """엑셀 파일 업로드 및 데이터 저장"""
