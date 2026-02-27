@@ -388,6 +388,7 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
     try:
         import openpyxl  # type: ignore
         from io import BytesIO
+        import re
         
         content = await file.read()
         # Any 타입을 사용하여 Pyre2의 타입 추론 강제 중단
@@ -396,7 +397,7 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
         if wb is None:
             raise HTTPException(status_code=400, detail="워크북을 로드할 수 없습니다.")
             
-        # 입고리스트 시트 찾기 (시트명에 '입고리스트' 포함)
+        # 1. 입고리스트 시트 찾기 (시트명에 '입고리스트' 포함)
         target_sheet = None
         year_month = None
         for sname in wb.sheetnames:  # type: ignore
@@ -417,8 +418,28 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
                         except ValueError:
                             continue
         
+        # 2. 파일명에서 추출 시도 (시트명에서 실패했거나, '입고리스트' 시트가 없는 경우)
+        if year_month is None:
+            filename = file.filename or ""
+            # 예: "2026-02 액상폐기물.xlsx" -> "2026-02"
+            m_regex = re.search(r'(\d{4})[-_](\d{2})', filename)
+            if m_regex:
+                year_month = f"{m_regex.group(1)}-{m_regex.group(2)}"
+            else:
+                # "26.1" 같은 형식이 파일명에 있을 수도 있음
+                m2 = re.search(r'(\d{2})\.(\d{1,2})', filename)
+                if m2:
+                    y = int(m2.group(1))
+                    mo = int(m2.group(2))
+                    year = y + 2000 if y < 100 else y
+                    year_month = f"{year}-{mo:02d}"
+        
+        # 시트를 찾지 못한 경우 첫 번째 혹은 활성 시트를 기본값으로 사용
+        if target_sheet is None:
+            target_sheet = wb.active
+
         if target_sheet is None or year_month is None:
-            raise HTTPException(status_code=400, detail="입고리스트 시트를 찾을 수 없습니다.")
+            raise HTTPException(status_code=400, detail="입고리스트 시트를 찾을 수 없거나 파일명에서 연월(YYYY-MM)을 추출할 수 없습니다.")
         
         # Any 타입을 사용하여 Pyre2의 속성 접근 오류 차단
         ws: Any = target_sheet
@@ -465,16 +486,23 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
             amount_cell = ws.cell(row=r, column=8).value  # type: ignore
             
             # None 체크
-            team = str(team_cell).strip() if team_cell else None
+            team_raw = str(team_cell).strip() if team_cell else None
             amount = amount_cell
             
-            if not team or not amount:
+            if not team_raw or not amount:
                 # 재고 행이거나 빈 행이면 건너뛰기
                 cell_h_val = ws.cell(row=r, column=8).value  # type: ignore
                 if cell_h_val and '재고' in str(cell_h_val):
                     continue
-                if not team:
+                if not team_raw:
                     continue
+            
+            # 팀명 정규화 (품보팀 -> 품질보증팀 등)
+            team = team_raw
+            if team == '품보팀':
+                team = '품질보증팀'
+            elif team == '연구1팀 팀':
+                team = '연구1팀'
             
             discharge_date = ws.cell(row=r, column=1).value  # type: ignore
             receive_date = ws.cell(row=r, column=2).value  # type: ignore
