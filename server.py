@@ -562,6 +562,38 @@ async def get_liquid_waste(year: str | None = None):
     return [dict(row) for row in rows]
 
 
+class LiquidWasteRecord(BaseModel):
+    year_month: str
+    discharge_date: Optional[str] = None
+    receive_date: Optional[str] = None
+    waste_type: str = ""
+    content: str = ""
+    team: str
+    discharger: str = ""
+    quantity_ea: int = 0
+    amount_kg: float = 0.0
+
+@app.post("/api/liquid-waste")
+async def create_liquid_waste(record: LiquidWasteRecord, x_admin_token: Optional[str] = Header(None)):
+    """액상폐기물 개별 레코드 추가 (동기화용)"""
+    require_admin(x_admin_token)
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO liquid_waste 
+            (year_month, discharge_date, receive_date, waste_type, content, team, discharger, quantity_ea, amount_kg)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (record.year_month, record.discharge_date, record.receive_date,
+              record.waste_type, record.content, record.team, record.discharger,
+              record.quantity_ea, record.amount_kg))
+        conn.commit()
+        conn.close()
+        return {"success": True, "message": "액상폐기물 데이터 추가 완료"}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/liquid-waste/{year_month}")
 async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = Header(None)):
     """특정 월 액상폐기물 데이터 삭제"""
@@ -578,18 +610,6 @@ async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = He
     
     return {"success": True, "deleted": deleted, "message": f"{year_month} 데이터 {deleted}건 삭제"}
 
-# --- 마이그레이션 전용 API ---
-
-class LiquidWasteRecord(BaseModel):
-    year_month: str
-    discharge_date: Optional[str] = None
-    receive_date: Optional[str] = None
-    waste_type: str = ""
-    content: str = ""
-    team: str
-    discharger: str = ""
-    quantity_ea: int = 0
-    amount_kg: float = 0.0
 
 @app.post("/api/liquid-waste/migration")
 def migrate_liquid_waste(records: List[LiquidWasteRecord]):
