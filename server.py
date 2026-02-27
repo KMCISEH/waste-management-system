@@ -484,16 +484,32 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
             quantity = ws.cell(row=r, column=7).value  # type: ignore
             amount_k = ws.cell(row=r, column=8).value  # type: ignore
             
-            # 날짜 변환
-            if hasattr(discharge_date, 'strftime'):
-                discharge_date = discharge_date.strftime('%Y-%m-%d')
-            else:
-                discharge_date = str(discharge_date) if discharge_date else None
+            import re
             
-            if hasattr(receive_date, 'strftime'):
-                receive_date = receive_date.strftime('%Y-%m-%d')
-            else:
-                receive_date = str(receive_date) if receive_date else None
+            def parse_date(d_val, y_m):
+                if hasattr(d_val, 'strftime'):
+                    return d_val.strftime('%Y-%m-%d')
+                
+                s_val = str(d_val).strip() if d_val else ''
+                if not s_val or s_val.lower() == 'nan' or s_val == 'None':
+                    return None
+                    
+                # 이미 YYYY-MM-DD 형태면 그대로 반환
+                if re.match(r'^\d{4}-\d{2}-\d{2}$', s_val):
+                    return s_val
+                    
+                # 1/19, 1.19 등의 형태를 현재 year_month 연도로 YYYY-MM-DD 변환
+                m = re.match(r'^(\d{1,2})[/\.-](\d{1,2})$', s_val)
+                if m:
+                    y = y_m.split('-')[0]
+                    month = int(m.group(1))
+                    day = int(m.group(2))
+                    return f"{y}-{month:02d}-{day:02d}"
+                    
+                return s_val
+                
+            discharge_date = parse_date(discharge_date, year_month)
+            receive_date = parse_date(receive_date, year_month)
             
             amount_kg = float(amount) if amount else 0  # type: ignore
             quantity_ea = int(quantity) if quantity else 0  # type: ignore
