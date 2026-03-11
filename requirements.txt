@@ -1,8 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 openpyxl
-jinja2
-python-multipart
 pandas
-psycopg2-binary
 python-calamine
+requests
+psycopg2-binary
+python-multipart

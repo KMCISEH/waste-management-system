@@ -2407,15 +2407,7 @@ async function loadAllLiquidWasteData() {
     // 연도 구분 없이 전체 데이터를 가져옴
     const res = await fetch(`${APP.apiBase}/api/liquid-waste`);
     if (!res.ok) throw new Error("데이터 로드 실패");
-    const rawData = await res.json();
-    
-    // 데이터 정규화 (품보팀 -> 품질보증팀 등)
-    lwAllData = rawData.map(r => {
-      let team = (r.team || '').trim();
-      if (team === '품보팀') team = '품질보증팀';
-      else if (team === '연구1팀 팀') team = '연구1팀';
-      return { ...r, team };
-    });
+    lwAllData = await res.json();
 
     // 월 목록 추출 및 셀렉트 갱신
     const months = [...new Set(lwAllData.map((r) => r.year_month))].sort();

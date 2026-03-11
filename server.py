@@ -1,130 +1,99 @@
 # -*- coding: utf-8 -*-
-# pyre-unsafe
+"""
+server.py - 지정폐기물 관리시스템(사내) 백엔드 서버
+- 사내 네트워크 전용 (GitHub/Render/Firebase 의존성 없음)
+- DB: 네트워크 공유 드라이브의 SQLite (database.py에서 자동 탐색)
+- 포트: 8000 (브라우저에서 http://localhost:8000 또는 http://[PC IP]:8000 접속)
+"""
 import sys
 import os
 import sqlite3
-# 현재 디렉토리를 경로에 추가
+from contextlib import asynccontextmanager
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Request, Header  # type: ignore
-from fastapi.staticfiles import StaticFiles  # type: ignore
-from fastapi.responses import StreamingResponse, JSONResponse  # type: ignore
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Request, Header
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional, no_type_check
 from pydantic import BaseModel
 import json
 import hashlib
-import uvicorn  # type: ignore
+import uvicorn
 
-# 커스텀 모듈 임포트
-from database import get_db_conn  # type: ignore
-from models import Record, StatusUpdate, Schedule  # type: ignore
-import excel_service  # type: ignore
+from database import get_db_conn, get_db_path
+from models import Record, StatusUpdate, Schedule
+import excel_service
 
-from fastapi.middleware.cors import CORSMiddleware  # type: ignore
-
-# === 관리자 비밀번호 설정 ===
-# 환경변수로 설정 가능, 기본값: "kmci2026"
+# === 관리자 비밀번호 ===
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "kmci2026")
 
 def verify_admin(token: str) -> bool:
-    """관리자 토큰 검증: 비밀번호의 SHA256 해시와 비교"""
     expected = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
     return token == expected
 
 def require_admin(x_admin_token: Optional[str] = Header(None)):
-    """쓰기 API 보호용: 관리자 토큰이 없거나 틀리면 403 에러"""
     if not x_admin_token or not verify_admin(x_admin_token):
         raise HTTPException(status_code=403, detail="관리자 인증이 필요합니다.")
 
-def db_row_to_dict(row):
-    """SQLite Row 또는 RealDictCursor Row를 딕셔너리로 변환"""
-    if row is None:
-        return None
-    return dict(row)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- 서버 시작 시 (기존 startup 이벤트) ---
+    db_path = get_db_path()
+    print(f"\n{'='*60}")
+    print(f"  지정폐기물 관리시스템 (사내) 시작")
+    print(f"  DB 경로: {db_path}")
+    print(f"  접속 URL: http://localhost:8000")
+    print(f"{'='*60}\n")
+    auto_seed_db()
 
-app = FastAPI(title="지정폐기물 관리 시스템 API")
+    yield  # 애플리케이션 실행 (클라이언트 요청 처리)
 
-# 보안 미들웨어 비활성화 - Render 사이트에서 직접 데이터 관리 허용
+    # --- 서버 종료 시 ---
+    print("[서버] 지정폐기물 관리시스템 종료")
 
-# CORS 설정 추가 (브라우저 연결 안정성 확보)
-origins = [
-    "https://waste-management-ee09a.web.app",
-    "https://waste-management-ee09a.firebaseapp.com",
-    "https://waste-api-3j2l.onrender.com",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
 
+app = FastAPI(title="지정폐기물 관리 시스템 API (사내)", lifespan=lifespan)
+
+# CORS: 사내 전체 허용 (localhost + 사내 IP 대역)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],          # 사내 전용이므로 전체 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 모든 응답에 CORS 헤더를 강제로 추가하는 미들웨어 (백업용)
-@app.middleware("http")
-async def add_cors_header(request: Request, call_next):
-    response = await call_next(request)
-    origin = request.headers.get("origin")
-    if origin in origins:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
+# ─────────────────────────────────────────────
+# 헬스체크 & DB 경로 확인
+# ─────────────────────────────────────────────
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "environment": os.environ.get("RENDER", "local")}
+    db_path = get_db_path()
+    return {
+        "status": "healthy",
+        "db_path": db_path,
+        "db_exists": os.path.exists(db_path)
+    }
 
-# === 관리자 인증 API ===
+# ─────────────────────────────────────────────
+# 관리자 인증
+# ─────────────────────────────────────────────
+
 class LoginRequest(BaseModel):
     password: str
 
 @app.post("/api/auth/login")
 def admin_login(req: LoginRequest):
-    """비밀번호 검증 후 관리자 토큰 반환"""
     if req.password == ADMIN_PASSWORD:
         token = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
         return {"success": True, "token": token}
     raise HTTPException(status_code=401, detail="비밀번호가 틀렸습니다.")
 
-@app.get("/api/debug-db")
-def debug_db():
-    try:
-        conn = get_db_conn()
-        res = {"type": str(type(conn))}
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM records")
-        res["records_count"] = cursor.fetchone()["count"]
-        cursor.execute("SELECT COUNT(*) as count FROM schedules")
-        res["schedules_count"] = cursor.fetchone()["count"]
-        conn.close()
-        return res
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/api/reset-db")
-@app.post("/api/reset-db")
-def reset_database():
-    """DB 초기화: 모든 테이블의 데이터를 삭제하고 초기 데이터를 다시 로드합니다."""
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        tables = ["records", "schedules", "liquid_waste"]
-        for table in tables:
-            cursor.execute(f"DELETE FROM {table}")
-        conn.commit()
-        conn.close()
-        
-        # 데이터 삭제 후 즉시 자동 시딩 실행
-        auto_seed_db()
-        
-        return {"message": "Database reset and seeded successfully", "tables_cleared": tables}
-    except Exception as e:
-        if conn:
-            conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
+# ─────────────────────────────────────────────
+# 인계서(Records) API
+# ─────────────────────────────────────────────
 
 @app.get("/api/records")
 def get_records():
@@ -142,13 +111,14 @@ def create_record(record: Record, x_admin_token: Optional[str] = Header(None)):
     cursor = conn.cursor()
     try:
         cursor.execute('''
-        INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, is_local)
+        INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no,
+                             processor, note1, note2, category, supplier, status, is_local)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
-        RETURNING id
-        ''', (record.slip_no, record.date, record.waste_type, record.amount, record.carrier, 
-              record.vehicle_no, record.processor, record.note1, record.note2, record.category, record.supplier, record.status))
+        ''', (record.slip_no, record.date, record.waste_type, record.amount,
+              record.carrier, record.vehicle_no, record.processor,
+              record.note1, record.note2, record.category, record.supplier, record.status))
         conn.commit()
-        new_id = cursor.fetchone()['id'] if os.environ.get('DATABASE_URL') else cursor.lastrowid
+        new_id = cursor._cursor.lastrowid
         conn.close()
         return {"message": "Success", "id": new_id}
     except sqlite3.IntegrityError:
@@ -166,19 +136,22 @@ def update_record(record_id: int, record: Record, x_admin_token: Optional[str] =
     try:
         cursor.execute('''
         UPDATE records 
-        SET slip_no = %s, date = %s, waste_type = %s, amount = %s, carrier = %s, 
-            vehicle_no = %s, processor = %s, note1 = %s, note2 = %s, category = %s, 
-            supplier = %s, status = %s
-        WHERE id = %s
-        ''', (record.slip_no, record.date, record.waste_type, record.amount, record.carrier, 
-              record.vehicle_no, record.processor, record.note1, record.note2, record.category, 
+        SET slip_no=%s, date=%s, waste_type=%s, amount=%s, carrier=%s,
+            vehicle_no=%s, processor=%s, note1=%s, note2=%s, category=%s,
+            supplier=%s, status=%s
+        WHERE id=%s
+        ''', (record.slip_no, record.date, record.waste_type, record.amount,
+              record.carrier, record.vehicle_no, record.processor,
+              record.note1, record.note2, record.category,
               record.supplier, record.status, record_id))
         conn.commit()
-        affected = cursor.rowcount
+        affected = cursor._cursor.rowcount
         conn.close()
         if affected == 0:
             raise HTTPException(status_code=404, detail="Record not found")
         return {"message": "Updated"}
+    except HTTPException:
+        raise
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=400, detail=str(e))
@@ -188,9 +161,9 @@ def update_status(record_id: int, status_update: StatusUpdate, x_admin_token: Op
     require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("UPDATE records SET status = %s WHERE id = %s", (status_update.status, record_id))
+    cursor.execute("UPDATE records SET status=%s WHERE id=%s", (status_update.status, record_id))
     conn.commit()
-    affected = cursor.rowcount
+    affected = cursor._cursor.rowcount
     conn.close()
     if affected == 0:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -201,9 +174,9 @@ def delete_record(record_id: int, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM records WHERE id = %s", (record_id,))
+    cursor.execute("DELETE FROM records WHERE id=%s", (record_id,))
     conn.commit()
-    affected = cursor.rowcount
+    affected = cursor._cursor.rowcount
     conn.close()
     if affected == 0:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -211,7 +184,6 @@ def delete_record(record_id: int, x_admin_token: Optional[str] = Header(None)):
 
 @app.delete("/api/records")
 def delete_all_records(x_admin_token: Optional[str] = Header(None)):
-    """모든 데이터 삭제 (관리자 전용)"""
     require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
@@ -220,88 +192,17 @@ def delete_all_records(x_admin_token: Optional[str] = Header(None)):
     conn.close()
     return {"message": "All records deleted"}
 
-
-# --- 일정 관리 API ---
-
-@app.get("/api/schedules")
-def get_schedules():
-    """모든 일정 조회"""
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM schedules ORDER BY date ASC, id ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
-
-@app.post("/api/schedules")
-def create_schedule(schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
-    """새 일정 등록"""
-    require_admin(x_admin_token)
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "INSERT INTO schedules (date, content, status) VALUES (%s, %s, %s) RETURNING id",
-            (schedule.date, schedule.content, schedule.status or 'pending')
-        )
-        conn.commit()
-        new_id = cursor.fetchone()['id'] if os.environ.get('DATABASE_URL') else cursor.lastrowid
-        conn.close()
-        return {"message": "Success", "id": new_id}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/schedules/{schedule_id}")
-def update_schedule(schedule_id: int, schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
-    """일정 수정 (내용, 상태)"""
-    require_admin(x_admin_token)
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "UPDATE schedules SET date = %s, content = %s, status = %s WHERE id = %s",
-            (schedule.date, schedule.content, schedule.status, schedule_id)
-        )
-        conn.commit()
-        affected = cursor.rowcount
-        conn.close()
-        if affected == 0:
-            raise HTTPException(status_code=404, detail="Schedule not found")
-        return {"message": "Updated"}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/schedules/{schedule_id}")
-def delete_schedule(schedule_id: int, x_admin_token: Optional[str] = Header(None)):
-    """일정 삭제"""
-    require_admin(x_admin_token)
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM schedules WHERE id = %s", (schedule_id,))
-    conn.commit()
-    affected = cursor.rowcount
-    conn.close()
-    if affected == 0:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-    return {"message": "Deleted"}
-
 @app.get("/api/master")
 def get_master():
     try:
         conn = get_db_conn()
         cursor = conn.cursor()
-        
         cursor.execute("SELECT DISTINCT waste_type FROM records WHERE waste_type IS NOT NULL AND waste_type != ''")
-        waste_types = [db_row_to_dict(row)['waste_type'] for row in cursor.fetchall()]
-        
+        waste_types = [dict(row)['waste_type'] for row in cursor.fetchall()]
         cursor.execute("SELECT DISTINCT processor FROM records WHERE processor IS NOT NULL AND processor != ''")
-        processors = [db_row_to_dict(row)['processor'] for row in cursor.fetchall()]
-        
+        processors = [dict(row)['processor'] for row in cursor.fetchall()]
         cursor.execute("SELECT DISTINCT vehicle_no FROM records WHERE vehicle_no IS NOT NULL AND vehicle_no != ''")
-        vehicles = [db_row_to_dict(row)['vehicle_no'] for row in cursor.fetchall()]
-
+        vehicles = [dict(row)['vehicle_no'] for row in cursor.fetchall()]
         conn.close()
         return {
             "wasteTypes": sorted(waste_types),
@@ -312,11 +213,78 @@ def get_master():
         import traceback
         return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
 
-# --- 데이터 입출력 (Import/Export) API ---
+# ─────────────────────────────────────────────
+# 일정(Schedules) API
+# ─────────────────────────────────────────────
+
+@app.get("/api/schedules")
+def get_schedules():
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM schedules ORDER BY date ASC, id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+@app.post("/api/schedules")
+def create_schedule(schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO schedules (date, content, status) VALUES (%s, %s, %s)",
+            (schedule.date, schedule.content, schedule.status or 'pending')
+        )
+        conn.commit()
+        new_id = cursor._cursor.lastrowid
+        conn.close()
+        return {"message": "Success", "id": new_id}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/schedules/{schedule_id}")
+def update_schedule(schedule_id: int, schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE schedules SET date=%s, content=%s, status=%s WHERE id=%s",
+            (schedule.date, schedule.content, schedule.status, schedule_id)
+        )
+        conn.commit()
+        affected = cursor._cursor.rowcount
+        conn.close()
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        return {"message": "Updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/schedules/{schedule_id}")
+def delete_schedule(schedule_id: int, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM schedules WHERE id=%s", (schedule_id,))
+    conn.commit()
+    affected = cursor._cursor.rowcount
+    conn.close()
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"message": "Deleted"}
+
+# ─────────────────────────────────────────────
+# 엑셀 내보내기 / 가져오기 API
+# ─────────────────────────────────────────────
 
 @app.get("/api/export/excel")
 def export_excel():
-    """DB 데이터를 엑셀로 추출"""
     try:
         output = excel_service.export_to_excel()
         return StreamingResponse(
@@ -329,7 +297,6 @@ def export_excel():
 
 @app.post("/api/export/excel/filtered")
 async def export_excel_filtered(data: List[Dict[str, Any]] = Body(...)):
-    """필터링된 데이터를 엑셀로 추출"""
     try:
         output = excel_service.export_filtered_to_excel(data)
         return StreamingResponse(
@@ -358,7 +325,6 @@ async def export_cost_excel(data: Dict[str, Any] = Body(...)):
 
 @app.post("/api/import/excel")
 async def import_excel(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
-    """엑셀 파일 업로드 및 데이터 저장"""
     require_admin(x_admin_token)
     try:
         content = await file.read()
@@ -369,7 +335,6 @@ async def import_excel(file: UploadFile = File(...), x_admin_token: Optional[str
 
 @app.post("/api/import/csv")
 async def import_csv(file: UploadFile = File(...), x_admin_token: Optional[str] = Header(None)):
-    """CSV 파일 업로드 및 데이터 저장"""
     require_admin(x_admin_token)
     try:
         content = await file.read()
@@ -378,7 +343,9 @@ async def import_csv(file: UploadFile = File(...), x_admin_token: Optional[str] 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"CSV 처리 중 오류: {str(e)}")
 
-# --- 팀별 액상폐기물 관리 API ---
+# ─────────────────────────────────────────────
+# 팀별 액상폐기물 API
+# ─────────────────────────────────────────────
 
 @app.post("/api/liquid-waste/upload")
 @no_type_check
@@ -486,23 +453,16 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
             amount_cell = ws.cell(row=r, column=8).value  # type: ignore
             
             # None 체크
-            team_raw = str(team_cell).strip() if team_cell else None
+            team = str(team_cell).strip() if team_cell else None
             amount = amount_cell
             
-            if not team_raw or not amount:
+            if not team or not amount:
                 # 재고 행이거나 빈 행이면 건너뛰기
                 cell_h_val = ws.cell(row=r, column=8).value  # type: ignore
                 if cell_h_val and '재고' in str(cell_h_val):
                     continue
-                if not team_raw:
+                if not team:
                     continue
-            
-            # 팀명 정규화 (품보팀 -> 품질보증팀 등)
-            team = team_raw
-            if team == '품보팀':
-                team = '품질보증팀'
-            elif team == '연구1팀 팀':
-                team = '연구1팀'
             
             discharge_date = ws.cell(row=r, column=1).value  # type: ignore
             receive_date = ws.cell(row=r, column=2).value  # type: ignore
@@ -586,11 +546,9 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
         raise HTTPException(status_code=400, detail=f"Excel 처리 중 오류: {str(e)}")
 
 @app.get("/api/liquid-waste")
-async def get_liquid_waste(year: str | None = None):
-    """액상폐기물 데이터 조회"""
+async def get_liquid_waste(year: Optional[str] = None):
     conn = get_db_conn()
     cursor = conn.cursor()
-    
     if year:
         cursor.execute("""
             SELECT * FROM liquid_waste 
@@ -599,221 +557,119 @@ async def get_liquid_waste(year: str | None = None):
         """, (f"{year}-%",))
     else:
         cursor.execute("SELECT * FROM liquid_waste ORDER BY year_month, team, receive_date")
-    
     rows = cursor.fetchall()
     conn.close()
-    
     return [dict(row) for row in rows]
-
-
-class LiquidWasteRecord(BaseModel):
-    year_month: str
-    discharge_date: Optional[str] = None
-    receive_date: Optional[str] = None
-    waste_type: str = ""
-    content: str = ""
-    team: str
-    discharger: str = ""
-    quantity_ea: int = 0
-    amount_kg: float = 0.0
-
-@app.post("/api/liquid-waste")
-async def create_liquid_waste(record: LiquidWasteRecord, x_admin_token: Optional[str] = Header(None)):
-    """액상폐기물 개별 레코드 추가 (동기화용)"""
-    require_admin(x_admin_token)
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            INSERT INTO liquid_waste 
-            (year_month, discharge_date, receive_date, waste_type, content, team, discharger, quantity_ea, amount_kg)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (record.year_month, record.discharge_date, record.receive_date,
-              record.waste_type, record.content, record.team, record.discharger,
-              record.quantity_ea, record.amount_kg))
-        conn.commit()
-        conn.close()
-        return {"success": True, "message": "액상폐기물 데이터 추가 완료"}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/liquid-waste/{year_month}")
 async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = Header(None)):
-    """특정 월 액상폐기물 데이터 삭제"""
     require_admin(x_admin_token)
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM liquid_waste WHERE year_month = %s", (year_month,))
-    deleted = cursor.rowcount
+    cursor.execute("DELETE FROM liquid_waste WHERE year_month=%s", (year_month,))
+    deleted = cursor._cursor.rowcount
     conn.commit()
     conn.close()
-    
     if deleted == 0:
         raise HTTPException(status_code=404, detail=f"{year_month} 데이터가 없습니다.")
-    
     return {"success": True, "deleted": deleted, "message": f"{year_month} 데이터 {deleted}건 삭제"}
 
-
-@app.post("/api/liquid-waste/migration")
-def migrate_liquid_waste(records: List[LiquidWasteRecord]):
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        count = 0
-        for r in records:
-            cursor.execute("""
-                INSERT INTO liquid_waste 
-                (year_month, discharge_date, receive_date, waste_type, content, team, discharger, quantity_ea, amount_kg)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (r.year_month, r.discharge_date, r.receive_date,
-                  r.waste_type, r.content, r.team, r.discharger,
-                  r.quantity_ea, r.amount_kg))
-            count += 1
-        conn.commit()
-        conn.close()
-        return {"message": f"Migrated {count} records"}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/schedules/migration")
-def migrate_schedules(schedules: List[Schedule]):
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    try:
-        count = 0
-        for s in schedules:
-            cursor.execute(
-                "INSERT INTO schedules (date, content, status) VALUES (%s, %s, %s)",
-                (s.date, s.content, s.status or 'pending')
-            )
-            count += 1
-        conn.commit()
-        conn.close()
-        return {"message": f"Migrated {count} schedules"}
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
+# ─────────────────────────────────────────────
+# 시작 시 DB 초기 데이터 자동 로드
+# ─────────────────────────────────────────────
 
 def auto_seed_db():
-    """DB가 비어있을 경우 로컬 JSON 파일들로부터 데이터를 자동으로 채움"""
+    """DB가 비어있을 경우 JSON 파일로부터 초기 데이터를 로드"""
     conn = get_db_conn()
     cursor = conn.cursor()
-    
     try:
-        # 1. Records (인계서)
-        # 1. Records (인계서)
-        # 1. Records (인계서)
+        # 1. Records
         cursor.execute("SELECT COUNT(*) as count FROM records")
-        first_row = cursor.fetchone()
-        records_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
-        
-        # 데이터가 없거나, 처리량이 0이거나, 날짜가 비어있는 데이터가 있다면 재동기화 수행
-        cursor.execute("SELECT COUNT(*) as count FROM records WHERE amount = 0 OR date = '' OR date IS NULL")
-        fix_needed_row = cursor.fetchone()
-        fix_needed_count = fix_needed_row['count'] if isinstance(fix_needed_row, dict) else fix_needed_row[0]
+        records_count = dict(cursor.fetchone())['count']
 
-        if records_count == 0 or fix_needed_count > 0:
-            file_path = "render_records.json"
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    
-                    # 로컬 데이터 매핑 및 is_local=1 강제 설정 (배포환경에서도 수정 가능하도록)
+        if records_count == 0:
+            for fname in ("render_records.json", "local_records.json"):
+                fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
+                if os.path.exists(fpath):
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
                     for r in data:
-                        # amount, is_local 값을 명시적으로 처리
                         amount = float(r.get('amount', 0) or 0)
-                        
-                        cursor.execute("""
-                            INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no, processor, note1, note2, category, supplier, status, is_local, created_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
-                            ON CONFLICT (slip_no) DO UPDATE SET
-                                date = EXCLUDED.date,
-                                amount = EXCLUDED.amount,
-                                is_local = 1,
-                                waste_type = EXCLUDED.waste_type,
-                                processor = EXCLUDED.processor,
-                                vehicle_no = EXCLUDED.vehicle_no
-                        """, (
-                            r.get('slip_no', ''), 
-                            r.get('date', ''), 
-                            r.get('waste_type', ''), 
-                            amount, 
-                            r.get('carrier', ''), 
-                            r.get('vehicle_no', ''), 
-                            r.get('processor', ''), 
-                            r.get('note1', ''), 
-                            r.get('note2', ''), 
-                            r.get('category', ''), 
-                            r.get('supplier', ''), 
-                            r.get('status', 'completed'), 
-                            r.get('created_at', '')
-                        ))
-                print(f"[OK] Records seeded: {len(data)} items (with is_local=1)")
+                        try:
+                            cursor.execute("""
+                                INSERT OR REPLACE INTO records
+                                (slip_no, date, waste_type, amount, carrier, vehicle_no,
+                                 processor, note1, note2, category, supplier, status, is_local, created_at)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+                            """, (
+                                r.get('slip_no', ''), r.get('date', ''),
+                                r.get('waste_type', ''), amount,
+                                r.get('carrier', ''), r.get('vehicle_no', ''),
+                                r.get('processor', ''), r.get('note1', ''),
+                                r.get('note2', ''), r.get('category', ''),
+                                r.get('supplier', ''), r.get('status', 'completed'),
+                                r.get('created_at', '')
+                            ))
+                        except Exception:
+                            pass
+                    print(f"[초기화] Records 로드 완료: {len(data)}건 ({fname})")
+                    break
 
-        # 2. Schedules (일정)
-        # 2. Schedules (일정)
+        # 2. Schedules
         cursor.execute("SELECT COUNT(*) as count FROM schedules")
-        first_row = cursor.fetchone()
-        schedules_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
-        
-        if schedules_count == 0:
-            file_path = "local_schedules.json"
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
+        sched_count = dict(cursor.fetchone())['count']
+        if sched_count == 0:
+            fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_schedules.json")
+            if os.path.exists(fpath):
+                with open(fpath, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for s in data:
+                for s in data:
+                    try:
                         cursor.execute(
-                            "INSERT INTO schedules (date, content, status, created_at) VALUES (%s, %s, %s, %s)",
-                            (s.get('date', ''), s.get('content', ''), s.get('status', 'pending'), s.get('created_at', ''))
+                            "INSERT INTO schedules (date, content, status, created_at) VALUES (?,?,?,?)",
+                            (s.get('date',''), s.get('content',''),
+                             s.get('status','pending'), s.get('created_at',''))
                         )
-                print(f"[OK] Schedules seeded: {len(data)} items")
+                    except Exception:
+                        pass
+                print(f"[초기화] Schedules 로드 완료: {len(data)}건")
 
-        # 3. Liquid Waste (액상폐기물 - local_liquid_waste.json)
+        # 3. Liquid Waste
         cursor.execute("SELECT COUNT(*) as count FROM liquid_waste")
-        first_row = cursor.fetchone()
-        lw_count = first_row['count'] if isinstance(first_row, dict) else first_row[0]
-        
+        lw_count = dict(cursor.fetchone())['count']
         if lw_count == 0:
-            file_path = "local_liquid_waste.json"
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
+            fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_liquid_waste.json")
+            if os.path.exists(fpath):
+                with open(fpath, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for lw in data:
+                for lw in data:
+                    try:
                         cursor.execute("""
-                            INSERT INTO liquid_waste 
-                            (year_month, discharge_date, receive_date, waste_type, content, team, discharger, quantity_ea, amount_kg)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO liquid_waste
+                            (year_month, discharge_date, receive_date, waste_type,
+                             content, team, discharger, quantity_ea, amount_kg)
+                            VALUES (?,?,?,?,?,?,?,?,?)
                         """, (
-                            lw.get('year_month', ''),
-                            lw.get('discharge_date', None),
-                            lw.get('receive_date', None),
-                            lw.get('waste_type', ''),
-                            lw.get('content', ''),
-                            lw.get('team', ''),
-                            lw.get('discharger', ''),
-                            lw.get('quantity_ea', 0),
+                            lw.get('year_month',''), lw.get('discharge_date'),
+                            lw.get('receive_date'), lw.get('waste_type',''),
+                            lw.get('content',''), lw.get('team',''),
+                            lw.get('discharger',''), lw.get('quantity_ea', 0),
                             float(lw.get('amount_kg', 0) or 0)
                         ))
-                print(f"[OK] Liquid waste seeded: {len(data)} items")
+                    except Exception:
+                        pass
+                print(f"[초기화] Liquid Waste 로드 완료: {len(data)}건")
 
         conn.commit()
     except Exception as e:
-        print(f"[ERROR] Auto-seeding failed: {e}")
+        print(f"[초기화 오류] {e}")
     finally:
         conn.close()
 
-@app.on_event("startup")
-async def startup_event():
-    # Render 환경에서만 실행하거나 로컬에서도 실행 가능
-    # Auto-seeding logic triggered
-    auto_seed_db()
+# lifespan 함수로 이전 (파일 상단 참고)
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
 if __name__ == "__main__":
-    import uvicorn  # type: ignore
-    # Render(클라우드) 환경에서는 PORT 환경변수를 사용해야 하며, 로컬에서는 8000을 기본값으로 사용합니다.
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port, access_log=True)  # type: ignore
+    uvicorn.run(app, host="0.0.0.0", port=port, access_log=True)
