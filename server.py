@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-server.py - 지정폐기물 관리시스템(사내) 백엔드 서버
-- 사내 네트워크 전용 (GitHub/Render/Firebase 의존성 없음)
-- DB: 네트워크 공유 드라이브의 SQLite (database.py에서 자동 탐색)
-- 포트: 8000 (브라우저에서 http://localhost:8000 또는 http://[PC IP]:8000 접속)
+server.py - 지정폐기물 관리시스템(사외) 백엔드 서버
+- DB: Neon PostgreSQL (Cloud DB)
+- 포트: 8000
 """
 import sys
 import os
-import sqlite3
 from contextlib import asynccontextmanager
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -21,7 +19,8 @@ import json
 import hashlib
 import uvicorn
 
-from database import get_db_conn, get_db_path
+import psycopg2
+from database import get_db_wrapper, get_db_path, init_db_tables
 from models import Record, StatusUpdate, Schedule
 import excel_service
 
@@ -38,11 +37,12 @@ def require_admin(x_admin_token: Optional[str] = Header(None)):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- 서버 시작 시 (기존 startup 이벤트) ---
+    # --- 서버 시작 시 ---
+    init_db_tables() # PostgreSQL 테이블 초기화
     db_path = get_db_path()
     print(f"\n{'='*60}")
-    print(f"  지정폐기물 관리시스템 (사내) 시작")
-    print(f"  DB 경로: {db_path}")
+    print(f"  지정폐기물 관리시스템 (사외) 시작")
+    print(f"  DB 호스트: {db_path}")
     print(f"  접속 URL: http://localhost:8000")
     print(f"{'='*60}\n")
     auto_seed_db()
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
     print("[서버] 지정폐기물 관리시스템 종료")
 
 
-app = FastAPI(title="지정폐기물 관리 시스템 API (사내)", lifespan=lifespan)
+app = FastAPI(title="지정폐기물 관리 시스템 API (사외)", lifespan=lifespan)
 
 # CORS: 사내 전체 허용 (localhost + 사내 IP 대역)
 app.add_middleware(
@@ -97,7 +97,7 @@ def admin_login(req: LoginRequest):
 
 @app.get("/api/records")
 def get_records():
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM records ORDER BY date DESC, id DESC")
     rows = cursor.fetchall()
@@ -107,7 +107,7 @@ def get_records():
 @app.post("/api/records")
 def create_record(record: Record, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     try:
         cursor.execute('''
@@ -118,10 +118,11 @@ def create_record(record: Record, x_admin_token: Optional[str] = Header(None)):
               record.carrier, record.vehicle_no, record.processor,
               record.note1, record.note2, record.category, record.supplier, record.status))
         conn.commit()
-        new_id = cursor._cursor.lastrowid
+        cursor.execute("SELECT LASTVAL()")
+        new_id = cursor.fetchone()[0]
         conn.close()
         return {"message": "Success", "id": new_id}
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         conn.close()
         raise HTTPException(status_code=400, detail="이미 존재하는 전표번호입니다. (중복 등록 불가)")
     except Exception as e:
@@ -131,7 +132,7 @@ def create_record(record: Record, x_admin_token: Optional[str] = Header(None)):
 @app.put("/api/records/{record_id}")
 def update_record(record_id: int, record: Record, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     try:
         cursor.execute('''
@@ -145,7 +146,7 @@ def update_record(record_id: int, record: Record, x_admin_token: Optional[str] =
               record.note1, record.note2, record.category,
               record.supplier, record.status, record_id))
         conn.commit()
-        affected = cursor._cursor.rowcount
+        affected = cursor.rowcount
         conn.close()
         if affected == 0:
             raise HTTPException(status_code=404, detail="Record not found")
@@ -159,11 +160,11 @@ def update_record(record_id: int, record: Record, x_admin_token: Optional[str] =
 @app.patch("/api/records/{record_id}/status")
 def update_status(record_id: int, status_update: StatusUpdate, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("UPDATE records SET status=%s WHERE id=%s", (status_update.status, record_id))
     conn.commit()
-    affected = cursor._cursor.rowcount
+    affected = cursor.rowcount
     conn.close()
     if affected == 0:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -172,11 +173,11 @@ def update_status(record_id: int, status_update: StatusUpdate, x_admin_token: Op
 @app.delete("/api/records/{record_id}")
 def delete_record(record_id: int, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM records WHERE id=%s", (record_id,))
     conn.commit()
-    affected = cursor._cursor.rowcount
+    affected = cursor.rowcount
     conn.close()
     if affected == 0:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -185,7 +186,7 @@ def delete_record(record_id: int, x_admin_token: Optional[str] = Header(None)):
 @app.delete("/api/records")
 def delete_all_records(x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM records")
     conn.commit()
@@ -195,7 +196,7 @@ def delete_all_records(x_admin_token: Optional[str] = Header(None)):
 @app.get("/api/master")
 def get_master():
     try:
-        conn = get_db_conn()
+        conn = get_db_wrapper()
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT waste_type FROM records WHERE waste_type IS NOT NULL AND waste_type != ''")
         waste_types = [dict(row)['waste_type'] for row in cursor.fetchall()]
@@ -219,7 +220,7 @@ def get_master():
 
 @app.get("/api/schedules")
 def get_schedules():
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM schedules ORDER BY date ASC, id ASC")
     rows = cursor.fetchall()
@@ -229,15 +230,15 @@ def get_schedules():
 @app.post("/api/schedules")
 def create_schedule(schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     try:
         cursor.execute(
             "INSERT INTO schedules (date, content, status) VALUES (%s, %s, %s)",
             (schedule.date, schedule.content, schedule.status or 'pending')
         )
-        conn.commit()
-        new_id = cursor._cursor.lastrowid
+        cursor.execute("SELECT LASTVAL()")
+        new_id = cursor.fetchone()[0]
         conn.close()
         return {"message": "Success", "id": new_id}
     except Exception as e:
@@ -247,7 +248,7 @@ def create_schedule(schedule: Schedule, x_admin_token: Optional[str] = Header(No
 @app.put("/api/schedules/{schedule_id}")
 def update_schedule(schedule_id: int, schedule: Schedule, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -255,7 +256,7 @@ def update_schedule(schedule_id: int, schedule: Schedule, x_admin_token: Optiona
             (schedule.date, schedule.content, schedule.status, schedule_id)
         )
         conn.commit()
-        affected = cursor._cursor.rowcount
+        affected = cursor.rowcount
         conn.close()
         if affected == 0:
             raise HTTPException(status_code=404, detail="Schedule not found")
@@ -269,11 +270,11 @@ def update_schedule(schedule_id: int, schedule: Schedule, x_admin_token: Optiona
 @app.delete("/api/schedules/{schedule_id}")
 def delete_schedule(schedule_id: int, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM schedules WHERE id=%s", (schedule_id,))
     conn.commit()
-    affected = cursor._cursor.rowcount
+    affected = cursor.rowcount
     conn.close()
     if affected == 0:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -518,7 +519,7 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
             raise HTTPException(status_code=400, detail="파싱된 데이터가 없습니다.")
         
         # DB 저장 (기존 해당 월 데이터 삭제 후 삽입)
-        conn = get_db_conn()
+        conn = get_db_wrapper()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM liquid_waste WHERE year_month = %s", (year_month,))
         
@@ -561,7 +562,7 @@ class LiquidWasteRecord(BaseModel):
 def create_liquid_waste(record: LiquidWasteRecord, x_admin_token: Optional[str] = Header(None)):
     """액상폐기물 개별 레코드 추가 (동기화용)"""
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     try:
         cursor.execute("""
@@ -580,7 +581,7 @@ def create_liquid_waste(record: LiquidWasteRecord, x_admin_token: Optional[str] 
 
 @app.get("/api/liquid-waste")
 async def get_liquid_waste(year: Optional[str] = None):
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     if year:
         cursor.execute("""
@@ -597,10 +598,10 @@ async def get_liquid_waste(year: Optional[str] = None):
 @app.delete("/api/liquid-waste/{year_month}")
 async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM liquid_waste WHERE year_month=%s", (year_month,))
-    deleted = cursor._cursor.rowcount
+    deleted = cursor.rowcount
     conn.commit()
     conn.close()
     if deleted == 0:
@@ -613,7 +614,7 @@ async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = He
 
 def auto_seed_db():
     """DB가 비어있을 경우 JSON 파일로부터 초기 데이터를 로드"""
-    conn = get_db_conn()
+    conn = get_db_wrapper()
     cursor = conn.cursor()
     try:
         # 1. Records
@@ -630,10 +631,11 @@ def auto_seed_db():
                         amount = float(r.get('amount', 0) or 0)
                         try:
                             cursor.execute("""
-                                INSERT OR REPLACE INTO records
+                                INSERT INTO records
                                 (slip_no, date, waste_type, amount, carrier, vehicle_no,
                                  processor, note1, note2, category, supplier, status, is_local, created_at)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
+                                ON CONFLICT (slip_no) DO NOTHING
                             """, (
                                 r.get('slip_no', ''), r.get('date', ''),
                                 r.get('waste_type', ''), amount,
@@ -659,7 +661,7 @@ def auto_seed_db():
                 for s in data:
                     try:
                         cursor.execute(
-                            "INSERT INTO schedules (date, content, status, created_at) VALUES (?,?,?,?)",
+                            "INSERT INTO schedules (date, content, status, created_at) VALUES (%s,%s,%s,%s)",
                             (s.get('date',''), s.get('content',''),
                              s.get('status','pending'), s.get('created_at',''))
                         )
@@ -681,7 +683,7 @@ def auto_seed_db():
                             INSERT INTO liquid_waste
                             (year_month, discharge_date, receive_date, waste_type,
                              content, team, discharger, quantity_ea, amount_kg)
-                            VALUES (?,?,?,?,?,?,?,?,?)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """, (
                             lw.get('year_month',''), lw.get('discharge_date'),
                             lw.get('receive_date'), lw.get('waste_type',''),
