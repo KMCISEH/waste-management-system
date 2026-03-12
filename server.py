@@ -45,7 +45,6 @@ async def lifespan(app: FastAPI):
     print(f"  DB 호스트: {db_path}")
     print(f"  접속 URL: http://localhost:8000")
     print(f"{'='*60}\n")
-    auto_seed_db()
 
     yield  # 애플리케이션 실행 (클라이언트 요청 처리)
 
@@ -609,99 +608,8 @@ async def delete_liquid_waste(year_month: str, x_admin_token: Optional[str] = He
     return {"success": True, "deleted": deleted, "message": f"{year_month} 데이터 {deleted}건 삭제"}
 
 # ─────────────────────────────────────────────
-# 시작 시 DB 초기 데이터 자동 로드
+# 정적 파일 서빙
 # ─────────────────────────────────────────────
-
-def auto_seed_db():
-    """DB가 비어있을 경우 JSON 파일로부터 초기 데이터를 로드"""
-    conn = get_db_wrapper()
-    cursor = conn.cursor()
-    try:
-        # 1. Records
-        cursor.execute("SELECT COUNT(*) as count FROM records")
-        records_count = dict(cursor.fetchone())['count']
-
-        if records_count == 0:
-            for fname in ("render_records.json", "local_records.json"):
-                fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
-                if os.path.exists(fpath):
-                    with open(fpath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    for r in data:
-                        amount = float(r.get('amount', 0) or 0)
-                        try:
-                            cursor.execute("""
-                                INSERT INTO records
-                                (slip_no, date, waste_type, amount, carrier, vehicle_no,
-                                 processor, note1, note2, category, supplier, status, is_local, created_at)
-                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
-                                ON CONFLICT (slip_no) DO NOTHING
-                            """, (
-                                r.get('slip_no', ''), r.get('date', ''),
-                                r.get('waste_type', ''), amount,
-                                r.get('carrier', ''), r.get('vehicle_no', ''),
-                                r.get('processor', ''), r.get('note1', ''),
-                                r.get('note2', ''), r.get('category', ''),
-                                r.get('supplier', ''), r.get('status', 'completed'),
-                                r.get('created_at', '')
-                            ))
-                        except Exception:
-                            pass
-                    print(f"[초기화] Records 로드 완료: {len(data)}건 ({fname})")
-                    break
-
-        # 2. Schedules
-        cursor.execute("SELECT COUNT(*) as count FROM schedules")
-        sched_count = dict(cursor.fetchone())['count']
-        if sched_count == 0:
-            fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_schedules.json")
-            if os.path.exists(fpath):
-                with open(fpath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for s in data:
-                    try:
-                        cursor.execute(
-                            "INSERT INTO schedules (date, content, status, created_at) VALUES (%s,%s,%s,%s)",
-                            (s.get('date',''), s.get('content',''),
-                             s.get('status','pending'), s.get('created_at',''))
-                        )
-                    except Exception:
-                        pass
-                print(f"[초기화] Schedules 로드 완료: {len(data)}건")
-
-        # 3. Liquid Waste
-        cursor.execute("SELECT COUNT(*) as count FROM liquid_waste")
-        lw_count = dict(cursor.fetchone())['count']
-        if lw_count == 0:
-            fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_liquid_waste.json")
-            if os.path.exists(fpath):
-                with open(fpath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for lw in data:
-                    try:
-                        cursor.execute("""
-                            INSERT INTO liquid_waste
-                            (year_month, discharge_date, receive_date, waste_type,
-                             content, team, discharger, quantity_ea, amount_kg)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        """, (
-                            lw.get('year_month',''), lw.get('discharge_date'),
-                            lw.get('receive_date'), lw.get('waste_type',''),
-                            lw.get('content',''), lw.get('team',''),
-                            lw.get('discharger',''), lw.get('quantity_ea', 0),
-                            float(lw.get('amount_kg', 0) or 0)
-                        ))
-                    except Exception:
-                        pass
-                print(f"[초기화] Liquid Waste 로드 완료: {len(data)}건")
-
-        conn.commit()
-    except Exception as e:
-        print(f"[초기화 오류] {e}")
-    finally:
-        conn.close()
-
-# lifespan 함수로 이전 (파일 상단 참고)
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
