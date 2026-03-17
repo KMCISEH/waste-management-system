@@ -1293,24 +1293,50 @@ function renderRecordsTable() {
 function initStatsPage() {
   populateYearSelect("statsYear");
 
-  // 기본적으로 월별 탭 활성화
-  document
-    .querySelectorAll(".period-tab")
-    .forEach((t) => t.classList.remove("active"));
-  document
-    .querySelector('.period-tab[data-period="monthly"]')
-    .classList.add("active");
+  // 메인 기간 탭 (상단: 재활용/매립 현황, 기간별 처리량, 요약 테이블)
+  const mainTabContainer = document.querySelector(".stats-filter-bar .period-tabs");
+  if (mainTabContainer) {
+    mainTabContainer.querySelectorAll(".period-tab").forEach((t) => t.classList.remove("active"));
+    const monthlyTab = mainTabContainer.querySelector('.period-tab[data-period="monthly"]');
+    if (monthlyTab) monthlyTab.classList.add("active");
 
-  document.querySelectorAll(".period-tab").forEach(
-    (tab) =>
-    (tab.onclick = () => {
-      document
-        .querySelectorAll(".period-tab")
-        .forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      renderStatsCharts();
-    }),
-  );
+    mainTabContainer.querySelectorAll(".period-tab").forEach((tab) => {
+      tab.onclick = () => {
+        mainTabContainer.querySelectorAll(".period-tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        renderStatsCharts();
+      };
+    });
+  }
+
+  // 독립 기간 탭 - 폐기물 기간별 추이 섹션
+  const wasteDetailTabContainer = document.getElementById("wasteDetailPeriodTabs");
+  if (wasteDetailTabContainer) {
+    wasteDetailTabContainer.querySelectorAll(".period-tab").forEach((tab) => {
+      tab.onclick = () => {
+        wasteDetailTabContainer.querySelectorAll(".period-tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const year = document.getElementById("statsYear").value || new Date().getFullYear().toString();
+        const yearRecords = APP.records.filter((r) => r.date && r.date.startsWith(year));
+        renderStatsDetailChart(yearRecords);
+      };
+    });
+  }
+
+  // 독립 기간 탭 - 기간별 상세 통계 테이블
+  const statsTableTabContainer = document.getElementById("statsTablePeriodTabs");
+  if (statsTableTabContainer) {
+    statsTableTabContainer.querySelectorAll(".period-tab").forEach((tab) => {
+      tab.onclick = () => {
+        statsTableTabContainer.querySelectorAll(".period-tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const year = document.getElementById("statsYear").value || new Date().getFullYear().toString();
+        const yearRecords = APP.records.filter((r) => r.date && r.date.startsWith(year));
+        renderStatsTable(yearRecords);
+      };
+    });
+  }
+
   document.getElementById("statsYear").onchange = renderStatsCharts;
   document.getElementById("btnExportStats").onclick = exportStatsCSV;
 
@@ -1323,13 +1349,13 @@ function renderStatsCharts() {
     document.getElementById("statsYear").value ||
     new Date().getFullYear().toString();
   const period =
-    document.querySelector(".period-tab.active")?.dataset.period || "monthly";
+    document.querySelector(".stats-filter-bar .period-tab.active")?.dataset.period || "monthly";
   const yearRecords = APP.records.filter(
     (r) => r.date && r.date.startsWith(year),
   );
   renderStatsTrendChart(yearRecords, period);
   renderStatsWasteChart(yearRecords);
-  renderStatsDetailChart(yearRecords);
+  renderStatsDetailChart(yearRecords, period);
   renderStatsTable(yearRecords, period);
 }
 
@@ -1739,47 +1765,60 @@ function exportCSV() {
   a.download = "waste_records.csv";
   a.click();
 }
-// Stats page specific charts/table
-function renderStatsCharts() {
-  const year =
-    document.getElementById("statsYear").value ||
-    new Date().getFullYear().toString();
-  const period =
-    document.querySelector(".period-tab.active")?.dataset.period || "monthly";
-  const yearRecords = APP.records.filter(
-    (r) => r.date && r.date.startsWith(year),
-  );
 
-  renderStatsDailyTypeChart(yearRecords, period);
-  renderStatsCumulativeChart(yearRecords, period);
-  renderStatsDetailChart(yearRecords);
-  renderStatsTable(yearRecords, period);
-}
-
-// 1. 일별 폐기물 종류별(비고) 처리량 - Stacked Bar Chart
+// 1. 재활용/소각/매립 현황 (폐기물 종류별 처리량) - Stacked Bar Chart
 function renderStatsDailyTypeChart(records, period) {
-  // 날짜별, 폐기물 종류(note)별 그룹화
   const dailyData = {};
+  const dailyLabels = {};
   const wasteTypes = new Set();
 
   records.forEach((r) => {
     if (!r.date) return;
-    // 월별 보기일 때는 일별(YYYY-MM-DD)로, 연별 보기일 때는 월별(YYYY-MM)로 그룹화하는 것이 일반적이나,
-    // 요청사항이 "일별"이므로 period에 상관없이 일자별로 보여주되, 데이터가 너무 많으면 필터링 필요할 수 있음.
-    // 여기서는 period 설정에 따라 라벨을 조정.
 
-    let key = r.date; // 기본 YYYY-MM-DD
-    if (period === "yearly") key = r.date.substring(0, 7); // YYYY-MM
+    let key = r.date;
+    let label = r.date;
+    const dateObj = new Date(r.date);
 
-    if (!dailyData[key]) dailyData[key] = {};
+    if (period === "daily") {
+      key = r.date;
+      label = r.date;
+    } else if (period === "weekly") {
+      const dayOfWeek = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+      const nearestThursday = new Date(dateObj);
+      nearestThursday.setDate(dateObj.getDate() + (4 - dayOfWeek));
+      const yearStart = new Date(nearestThursday.getFullYear(), 0, 1);
+      const isoWeek = Math.ceil(((nearestThursday - yearStart) / 86400000 + 1) / 7);
+      key = `${nearestThursday.getFullYear()}-W${String(isoWeek).padStart(2, "0")}`;
+      const monday = new Date(dateObj);
+      monday.setDate(dateObj.getDate() - (dayOfWeek - 1));
+      const m = monday.getMonth() + 1;
+      const fdm = new Date(monday.getFullYear(), monday.getMonth(), 1);
+      const wom = Math.ceil((monday.getDate() + fdm.getDay()) / 7);
+      label = `${m}월 ${wom}주`;
+    } else if (period === "monthly") {
+      key = r.date.substring(0, 7);
+      label = `${dateObj.getMonth() + 1}월`;
+    } else if (period === "quarterly") {
+      const q = Math.floor(dateObj.getMonth() / 3) + 1;
+      key = `${dateObj.getFullYear()}-${q}Q`;
+      label = `${q}분기`;
+    } else if (period === "yearly") {
+      key = r.date.substring(0, 4);
+      label = `${key}년`;
+    }
 
-    const type = r.note || "기타"; // 비고 기준, 없으면 기타
+    if (!dailyData[key]) {
+      dailyData[key] = {};
+      dailyLabels[key] = label;
+    }
+
+    const type = r.note || "기타";
     wasteTypes.add(type);
-
     dailyData[key][type] = (dailyData[key][type] || 0) + (r.amount || 0);
   });
 
-  const labels = Object.keys(dailyData).sort();
+  const sortedKeys = Object.keys(dailyData).sort();
+  const labels = sortedKeys.map(k => dailyLabels[k]);
   const types = Array.from(wasteTypes).sort();
 
   // 색상 팔레트
@@ -1798,7 +1837,7 @@ function renderStatsDailyTypeChart(records, period) {
 
   const datasets = types.map((type, index) => ({
     label: type,
-    data: labels.map((date) => dailyData[date][type] || 0),
+    data: sortedKeys.map((k) => dailyData[k][type] || 0),
     backgroundColor: colors[index % colors.length],
     borderRadius: 4,
     stack: "combined",
@@ -1844,43 +1883,54 @@ function renderStatsDailyTypeChart(records, period) {
   );
 }
 
-// 2. 주간 처리량 - Bar Chart
+// 2. 누적 처리량 (기본 Bar Chart) - period(일/주/월/분기/년) 기준
 function renderStatsCumulativeChart(records, period) {
-  // 항상 ISO 주 단위로 실제 인계서 데이터 집계
-  // key: "YYYY-WNN" (정렬·참조용), displayLabel: "M월 N주" (화면 표시용)
-  const weeklyTotal = {};   // key → amount
-  const weekLabel = {};     // key → "M월 N주"
+  const periodTotal = {};   // key → amount
+  const periodLabel = {};   // key → "표시용 텍스트"
 
   records.forEach((r) => {
     if (!r.date || !r.amount) return;
-    const d = new Date(r.date);
-    // ISO 주 번호 계산: 월요일 시작 기준
-    const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay(); // 1(월)~7(일)
-    const nearestThursday = new Date(d);
-    nearestThursday.setDate(d.getDate() + (4 - dayOfWeek));
-    const yearStart = new Date(nearestThursday.getFullYear(), 0, 1);
-    const isoWeek = Math.ceil(((nearestThursday - yearStart) / 86400000 + 1) / 7);
-    const isoYear = nearestThursday.getFullYear();
+    const dateObj = new Date(r.date);
+    let key = r.date;
+    let label = r.date;
 
-    const key = `${isoYear}-W${String(isoWeek).padStart(2, "0")}`;
-    weeklyTotal[key] = (weeklyTotal[key] || 0) + (r.amount || 0);
-
-    // 해당 주의 월요일 날짜 기준으로 "M월 N주" 레이블 생성
-    if (!weekLabel[key]) {
-      // 그 주의 첫째 날(원본 날짜 기준 월요일)
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - (dayOfWeek - 1));
-      const mon = monday.getMonth() + 1; // 1~12
-      // 해당 월에서 몇 번째 주인지 (월의 1일이 속한 주 = 1주)
+    if (period === "daily") {
+      key = r.date;
+      label = r.date;
+    } else if (period === "weekly") {
+      const dayOfWeek = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+      const nearestThursday = new Date(dateObj);
+      nearestThursday.setDate(dateObj.getDate() + (4 - dayOfWeek));
+      const yearStart = new Date(nearestThursday.getFullYear(), 0, 1);
+      const isoWeek = Math.ceil(((nearestThursday - yearStart) / 86400000 + 1) / 7);
+      key = `${nearestThursday.getFullYear()}-W${String(isoWeek).padStart(2, "0")}`;
+      
+      const monday = new Date(dateObj);
+      monday.setDate(dateObj.getDate() - (dayOfWeek - 1));
+      const mon = monday.getMonth() + 1;
       const firstDayOfMonth = new Date(monday.getFullYear(), monday.getMonth(), 1);
       const weekOfMonth = Math.ceil((monday.getDate() + firstDayOfMonth.getDay()) / 7);
-      weekLabel[key] = `${mon}월 ${weekOfMonth}주`;
+      label = `${mon}월 ${weekOfMonth}주`;
+    } else if (period === "monthly") {
+      key = r.date.substring(0, 7);
+      label = `${dateObj.getMonth() + 1}월`;
+    } else if (period === "quarterly") {
+      const month = dateObj.getMonth();
+      const quarter = Math.floor(month / 3) + 1;
+      key = `${dateObj.getFullYear()}-${quarter}Q`;
+      label = `${quarter}분기`;
+    } else if (period === "yearly") {
+      key = r.date.substring(0, 4);
+      label = `${key}년`;
     }
+
+    periodTotal[key] = (periodTotal[key] || 0) + (r.amount || 0);
+    if (!periodLabel[key]) periodLabel[key] = label;
   });
 
-  const sortedKeys = Object.keys(weeklyTotal).sort();
-  const labels = sortedKeys.map((k) => weekLabel[k] || k);
-  const data = sortedKeys.map((k) => parseFloat(weeklyTotal[k].toFixed(2)));
+  const sortedKeys = Object.keys(periodTotal).sort();
+  const labels = sortedKeys.map((k) => periodLabel[k] || k);
+  const data = sortedKeys.map((k) => parseFloat(periodTotal[k].toFixed(2)));
 
   if (APP.charts.statsCumulative) APP.charts.statsCumulative.destroy();
 
@@ -1931,242 +1981,199 @@ function renderStatsCumulativeChart(records, period) {
     },
   );
 }
-function renderStatsDetailChart(records) {
-  // 월별 그룹화 (1월~12월)
-  const monthlyData = Array.from({ length: 12 }, () => ({
-    drum: 0,
-    ibc: 0,
-    aoTar: 0,
-    methanol: 0,
-    solidHazardous: 0,
-    liquidHazardous: 0,
-    etc: 0,
-  }));
+function renderStatsDetailChart(records, _period) {
+  // 독립 탭에서 기간 읽기 (wasteDetailPeriodTabs)
+  const period = document.querySelector("#wasteDetailPeriodTabs .period-tab.active")?.dataset.period || "monthly";
 
-  // 표시할 마지막 월 인덱스 계산 (현재 연도라면 현재 월까지만, 아니면 12월까지)
-  const selectedYear = parseInt(
-    document.getElementById("statsYear")?.value || new Date().getFullYear(),
-  );
-  const now = new Date();
-  const isCurrentYear = selectedYear === now.getFullYear();
-  const lastIndex = isCurrentYear ? now.getMonth() : 11;
+  // -- 기간별 그룹화 헬퍼 --
+  function getPeriodKey(dateStr) {
+    const dateObj = new Date(dateStr);
+    if (period === "daily") return { key: dateStr, label: dateStr };
+    if (period === "weekly") {
+      const dow = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+      const thu = new Date(dateObj); thu.setDate(dateObj.getDate() + (4 - dow));
+      const ys = new Date(thu.getFullYear(), 0, 1);
+      const wk = Math.ceil(((thu - ys) / 86400000 + 1) / 7);
+      const key = `${thu.getFullYear()}-W${String(wk).padStart(2,"0")}`;
+      const mon = new Date(dateObj); mon.setDate(dateObj.getDate() - (dow - 1));
+      const m = mon.getMonth() + 1;
+      const fdm = new Date(mon.getFullYear(), mon.getMonth(), 1);
+      const wom = Math.ceil((mon.getDate() + fdm.getDay()) / 7);
+      return { key, label: `${m}월 ${wom}주` };
+    }
+    if (period === "monthly" || !period) {
+      const key = dateStr.substring(0, 7);
+      return { key, label: `${dateObj.getMonth() + 1}월` };
+    }
+    if (period === "quarterly") {
+      const q = Math.floor(dateObj.getMonth() / 3) + 1;
+      return { key: `${dateObj.getFullYear()}-${q}Q`, label: `${q}분기` };
+    }
+    // yearly
+    return { key: dateStr.substring(0, 4), label: `${dateStr.substring(0, 4)}년` };
+  }
+
+  // -- 7개 고정 카테고리 집계 --
+  const periodData = {};
+  const periodLabels = {};
 
   records.forEach((r) => {
     if (!r.date) return;
-    const m = parseInt(r.date.split("-")[1]) - 1;
-    if (m < 0 || m > 11) return;
+    const { key, label } = getPeriodKey(r.date);
+
+    if (!periodData[key]) {
+      periodData[key] = { drum: 0, ibc: 0, aoTar: 0, methanol: 0, solid: 0, liquid: 0, etc: 0 };
+      periodLabels[key] = label;
+    }
 
     const note = (r.category || "").trim();
     const amount = r.amount || 0;
-
-    // 수량
-    const drumMatch = note.match(/폐공드럼\s*(\d+)/);
-    const ibcMatch = note.match(/폐IBC\s*(\d+)/);
-    if (drumMatch) monthlyData[m].drum += parseInt(drumMatch[1], 10);
-    if (ibcMatch) monthlyData[m].ibc += parseInt(ibcMatch[1], 10);
-
-    // 톤수 - 기간별 상세 통계와 동일한 로직
     const lowerNote = note.toLowerCase();
-    if (lowerNote.includes("ao-tar")) {
-      monthlyData[m].aoTar += amount;
-    } else if (lowerNote.includes("메탄올")) {
-      monthlyData[m].methanol += amount;
-    } else {
-      // AO-Tar, 메탄올이 아닌 경우 wasteName으로 세분화
-      const wasteName = (r.wasteName || "").trim();
-      const lowerWasteName = wasteName.toLowerCase();
 
-      if (lowerWasteName.includes("고상") || lowerWasteName.includes("고체")) {
-        monthlyData[m].solidHazardous += amount;
-      } else if (
-        lowerWasteName.includes("액상") ||
-        lowerWasteName.includes("액체")
-      ) {
-        monthlyData[m].liquidHazardous += amount;
-      } else {
-        monthlyData[m].etc += amount;
-      }
+    // 수량(드럼·IBC)
+    const drumMatch = note.match(/폐공드럼\s*(\d+)/);
+    const ibcMatch  = note.match(/폐IBC\s*(\d+)/);
+    if (drumMatch) periodData[key].drum += parseInt(drumMatch[1], 10);
+    if (ibcMatch)  periodData[key].ibc  += parseInt(ibcMatch[1],  10);
+
+    // 톤수 분류 (비고→폐기물명 순)
+    if (lowerNote.includes("ao-tar")) {
+      periodData[key].aoTar += amount;
+    } else if (lowerNote.includes("메탄올")) {
+      periodData[key].methanol += amount;
+    } else {
+      const wn = (r.wasteName || "").toLowerCase();
+      if      (wn.includes("고상") || wn.includes("고체")) periodData[key].solid   += amount;
+      else if (wn.includes("액상") || wn.includes("액체")) periodData[key].liquid  += amount;
+      else                                               periodData[key].etc     += amount;
     }
   });
 
-  // 월 라벨
-  const monthLabels = Array.from({ length: 12 }, (_, i) => `${i + 1}월`);
+  const sortedKeys = Object.keys(periodData).sort();
+  const labels = sortedKeys.map(k => periodLabels[k]);
 
-  // 각 폐기물별 독립 차트 생성
+  // -- 7개 차트 설정 --
   const chartConfigs = [
-    {
-      id: "statsDetailDrum",
-      key: "drum",
-      label: "폐공드럼",
-      color: "#f59e0b",
-      chartKey: "statsDrum",
-    },
-    {
-      id: "statsDetailIbc",
-      key: "ibc",
-      label: "폐IBC",
-      color: "#06b6d4",
-      chartKey: "statsIbc",
-    },
-    {
-      id: "statsDetailAoTar",
-      key: "aoTar",
-      label: "AO-Tar",
-      color: "#8b5cf6",
-      chartKey: "statsAoTar",
-    },
-    {
-      id: "statsDetailMethanol",
-      key: "methanol",
-      label: "메탄올",
-      color: "#ec4899",
-      chartKey: "statsMethanol",
-    },
-    {
-      id: "statsDetailSolid",
-      key: "solidHazardous",
-      label: "유해화학물질(고상)",
-      color: "#10b981",
-      chartKey: "statsSolid",
-    },
-    {
-      id: "statsDetailLiquid",
-      key: "liquidHazardous",
-      label: "유해화학물질(액상)",
-      color: "#3b82f6",
-      chartKey: "statsLiquid",
-    },
-    {
-      id: "statsDetailEtc",
-      key: "etc",
-      label: "기타",
-      color: "#6b7280",
-      chartKey: "statsEtc",
-    },
+    { key: "drum",     label: "폐공드럼",                    unit: "개", color: "#f59e0b" },
+    { key: "ibc",      label: "폐IBC",                       unit: "개", color: "#06b6d4" },
+    { key: "aoTar",    label: "AO-Tar",                      unit: "톤", color: "#8b5cf6" },
+    { key: "methanol", label: "메탄올",                      unit: "톤", color: "#ec4899" },
+    { key: "liquid",   label: "유해화학물질(액상)",           unit: "톤", color: "#3b82f6" },
+    { key: "solid",    label: "유해화학물질(고상)",           unit: "톤", color: "#10b981" },
+    { key: "etc",      label: "기타",                         unit: "톤", color: "#6b7280" },
   ];
 
-  chartConfigs.forEach((config) => {
-    const ctx = document.getElementById(config.id);
-    if (!ctx) return;
+  // -- 컨테이너 교체 --
+  const container = document.getElementById("wasteDetailChartsContainer");
+  if (!container) return;
+  if (!APP.charts.wasteDetail) APP.charts.wasteDetail = {};
+  Object.values(APP.charts.wasteDetail).forEach(c => c.destroy());
+  APP.charts.wasteDetail = {};
+  container.innerHTML = "";
 
-    // 기존 차트 파괴
-    if (APP.charts[config.chartKey]) {
-      APP.charts[config.chartKey].destroy();
-    }
+  chartConfigs.forEach((cfg, idx) => {
+    const canvasId = `wd_chart_${idx}`;
+    container.insertAdjacentHTML("beforeend", `
+      <div class="chart-card">
+        <div class="chart-header">
+          <h4 style="font-size:14px">${cfg.label} (${cfg.unit})</h4>
+        </div>
+        <div class="chart-body" style="height:200px">
+          <canvas id="${canvasId}"></canvas>
+        </div>
+      </div>`);
 
-    // 데이터 준비 (미래 월은 null)
-    const data = monthlyData.map((d, i) =>
-      i <= lastIndex ? d[config.key] : null,
-    );
+    const ctx = document.getElementById(canvasId);
+    const data = sortedKeys.map(k => parseFloat((periodData[k][cfg.key] || 0).toFixed(2)));
 
-    // 차트 생성
-    APP.charts[config.chartKey] = new Chart(ctx, {
+    APP.charts.wasteDetail[canvasId] = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: monthLabels,
-        datasets: [
-          {
-            label: config.label,
-            data: data,
-            backgroundColor: config.color,
-            borderRadius: 4,
-            barPercentage: 0.7,
-          },
-        ],
+        labels,
+        datasets: [{ label: cfg.label, data, backgroundColor: cfg.color, borderRadius: 4, barPercentage: 0.7 }],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-        },
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
         scales: {
-          x: {
-            grid: { color: getChartGridColor() },
-            ticks: {
-              color: getChartTextColor(),
-              font: { size: 10 },
-            },
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: getChartGridColor() },
-            ticks: {
-              color: getChartTextColor(),
-              font: { size: 10 },
-            },
-          },
+          x: { grid: { color: getChartGridColor() }, ticks: { color: getChartTextColor(), font: { size: 10 } } },
+          y: { beginAtZero: true, grid: { color: getChartGridColor() }, ticks: { color: getChartTextColor(), font: { size: 10 } } },
         },
       },
     });
   });
 }
-function renderStatsTable(records, period) {
-  // 기간별 상세 통계를 "비고"란 중심으로 개편
-  // 기준: 월별
-  // 컬럼: 월 | 폐공드럼(개) | 폐IBC(개) | AO-Tar(톤) | 메탄올(톤) | 유해화학물질(고상)(톤) | 유해화학물질(액상)(톤) | 기타(톤) | 합계(톤)
+function renderStatsTable(records, _period) {
+  // 테이블 전용 독립 탭에서 기간 읽기
+  const period = document.querySelector("#statsTablePeriodTabs .period-tab.active")?.dataset.period || "daily";
 
-  // 1. 월별 그룹화
-  const monthlyData = {};
+  // -- 기간별 그룹화 헬퍼 --
+  function getPeriodKey(dateStr) {
+    const dateObj = new Date(dateStr);
+    if (period === "daily") return { key: dateStr, label: dateStr };
+    if (period === "weekly") {
+      const dow = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+      const thu = new Date(dateObj); thu.setDate(dateObj.getDate() + (4 - dow));
+      const ys = new Date(thu.getFullYear(), 0, 1);
+      const wk = Math.ceil(((thu - ys) / 86400000 + 1) / 7);
+      const key = `${thu.getFullYear()}-W${String(wk).padStart(2,"0")}`;
+      const mon = new Date(dateObj); mon.setDate(dateObj.getDate() - (dow - 1));
+      const m = mon.getMonth() + 1;
+      const fdm = new Date(mon.getFullYear(), mon.getMonth(), 1);
+      const wom = Math.ceil((mon.getDate() + fdm.getDay()) / 7);
+      return { key, label: `${dateObj.getFullYear()}년 ${m}월 ${wom}주` };
+    }
+    if (period === "monthly" || !period) {
+      const key = dateStr.substring(0, 7);
+      return { key, label: `${dateObj.getFullYear()}년 ${dateObj.getMonth() + 1}월` };
+    }
+    if (period === "quarterly") {
+      const q = Math.floor(dateObj.getMonth() / 3) + 1;
+      return { key: `${dateObj.getFullYear()}-${q}Q`, label: `${dateObj.getFullYear()}년 ${q}분기` };
+    }
+    return { key: dateStr.substring(0, 4), label: `${dateStr.substring(0, 4)}년` };
+  }
+
+  // -- 7개 고정 카테고리로 집계 --
+  const periodData = {};
+  const periodLabels = {};
+
   records.forEach((r) => {
     if (!r.date) return;
-    const monthKey = r.date.substring(0, 7); // YYYY-MM
-    if (!monthlyData[monthKey]) {
-      monthlyData[monthKey] = {
-        drum: 0,
-        ibc: 0,
-        aoTar: 0,
-        methanol: 0,
-        solidHazardous: 0, // 유해화학물질(고상)
-        liquidHazardous: 0, // 유해화학물질(액상)
-        etc: 0,
-        totalAmount: 0,
-      };
+    const { key, label } = getPeriodKey(r.date);
+
+    if (!periodData[key]) {
+      periodData[key] = { drum: 0, ibc: 0, aoTar: 0, methanol: 0, liquid: 0, solid: 0, etc: 0, total: 0 };
+      periodLabels[key] = label;
     }
 
-    // 비고 파싱
     const note = (r.category || "").trim();
     const amount = r.amount || 0;
-
-    // 폐공드럼/IBC 수량 추출
-    const drumMatch = note.match(/폐공드럼\s*(\d+)/);
-    const ibcMatch = note.match(/폐IBC\s*(\d+)/);
-
-    if (drumMatch) monthlyData[monthKey].drum += parseInt(drumMatch[1], 10);
-    if (ibcMatch) monthlyData[monthKey].ibc += parseInt(ibcMatch[1], 10);
-
-    // 품목별 톤수 집계
     const lowerNote = note.toLowerCase();
+
+    const drumMatch = note.match(/폐공드럼\s*(\d+)/);
+    const ibcMatch  = note.match(/폐IBC\s*(\d+)/);
+    if (drumMatch) periodData[key].drum += parseInt(drumMatch[1], 10);
+    if (ibcMatch)  periodData[key].ibc  += parseInt(ibcMatch[1],  10);
+
     if (lowerNote.includes("ao-tar")) {
-      monthlyData[monthKey].aoTar += amount;
+      periodData[key].aoTar += amount;
     } else if (lowerNote.includes("메탄올")) {
-      monthlyData[monthKey].methanol += amount;
+      periodData[key].methanol += amount;
     } else {
-      // AO-Tar, 메탄올이 아닌 경우 wasteName으로 세분화
-      const wasteName = (r.wasteName || "").trim();
-      const lowerWasteName = wasteName.toLowerCase();
-
-      if (lowerWasteName.includes("고상") || lowerWasteName.includes("고체")) {
-        monthlyData[monthKey].solidHazardous += amount;
-      } else if (
-        lowerWasteName.includes("액상") ||
-        lowerWasteName.includes("액체")
-      ) {
-        monthlyData[monthKey].liquidHazardous += amount;
-      } else {
-        monthlyData[monthKey].etc += amount;
-      }
+      const wn = (r.wasteName || "").toLowerCase();
+      if      (wn.includes("액상") || wn.includes("액체")) periodData[key].liquid  += amount;
+      else if (wn.includes("고상") || wn.includes("고체")) periodData[key].solid   += amount;
+      else                                               periodData[key].etc     += amount;
     }
-
-    monthlyData[monthKey].totalAmount += amount;
+    periodData[key].total += amount;
   });
 
-  // 2. 테이블 렌더링
-  const sortedMonths = Object.keys(monthlyData).sort().reverse(); // 최신순
+  const sortedKeys = Object.keys(periodData).sort().reverse();
 
-  // 헤더
   const thead = document.getElementById("statsTableHeader");
   const tbody = document.getElementById("statsTableBody");
+  if (!thead || !tbody) return;
 
   thead.innerHTML = `
     <tr>
@@ -2175,40 +2182,33 @@ function renderStatsTable(records, period) {
       <th style="color:var(--info)">폐IBC<br><small>(개)</small></th>
       <th>AO-Tar<br><small>(톤)</small></th>
       <th>메탄올<br><small>(톤)</small></th>
-      <th>유해화학물질<br><small>(고상, 톤)</small></th>
       <th>유해화학물질<br><small>(액상, 톤)</small></th>
+      <th>유해화학물질<br><small>(고상, 톤)</small></th>
       <th>기타<br><small>(톤)</small></th>
       <th>총 처리량<br><small>(톤)</small></th>
-    </tr>
-  `;
+    </tr>`;
 
-  if (sortedMonths.length === 0) {
-    tbody.innerHTML =
-      '<tr><td colspan="9" style="text-align:center; padding: 20px;">데이터가 없습니다.</td></tr>';
+  if (sortedKeys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">데이터가 없습니다.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = sortedMonths
-    .map((m) => {
-      const d = monthlyData[m];
-      const [y, mon] = m.split("-");
-      const label = `${y}년 ${mon}월`;
-
-      return `
-      <tr>
-        <td><strong>${label}</strong></td>
-        <td>${d.drum > 0 ? d.drum.toLocaleString() : "-"}</td>
-        <td>${d.ibc > 0 ? d.ibc.toLocaleString() : "-"}</td>
-        <td>${d.aoTar > 0 ? d.aoTar.toFixed(2) : "-"}</td>
-        <td>${d.methanol > 0 ? d.methanol.toFixed(2) : "-"}</td>
-        <td>${d.solidHazardous > 0 ? d.solidHazardous.toFixed(2) : "-"}</td>
-        <td>${d.liquidHazardous > 0 ? d.liquidHazardous.toFixed(2) : "-"}</td>
-        <td>${d.etc > 0 ? d.etc.toFixed(2) : "-"}</td>
-        <td><strong>${d.totalAmount.toFixed(2)}</strong></td>
-      </tr>
-    `;
-    })
-    .join("");
+  tbody.innerHTML = sortedKeys.map((k) => {
+    const d = periodData[k];
+    const fmt = (v) => v > 0 ? v.toFixed(2) : "-";
+    const fmtN = (v) => v > 0 ? v.toLocaleString() : "-";
+    return `<tr>
+      <td><strong>${periodLabels[k]}</strong></td>
+      <td>${fmtN(d.drum)}</td>
+      <td>${fmtN(d.ibc)}</td>
+      <td>${fmt(d.aoTar)}</td>
+      <td>${fmt(d.methanol)}</td>
+      <td>${fmt(d.liquid)}</td>
+      <td>${fmt(d.solid)}</td>
+      <td>${fmt(d.etc)}</td>
+      <td><strong>${fmt(d.total)}</strong></td>
+    </tr>`;
+  }).join("");
 }
 function exportStatsCSV() {
   showToast("통계 내보내기 완료", "success");

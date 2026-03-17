@@ -419,9 +419,9 @@
       <!-- 기간 선택 -->
       <div class="stats-filter-bar">
         <div class="period-tabs">
-          <button class="period-tab active" data-period="monthly">
-            월별
-          </button>
+          <button class="period-tab" data-period="daily">일별</button>
+          <button class="period-tab" data-period="weekly">주별</button>
+          <button class="period-tab active" data-period="monthly">월별</button>
           <button class="period-tab" data-period="quarterly">분기별</button>
           <button class="period-tab" data-period="yearly">연별</button>
         </div>
@@ -440,97 +440,52 @@
         </div>
         <div class="chart-card">
           <div class="chart-header">
-            <h3>주간 처리량</h3>
+            <h3>기간별 처리량</h3>
           </div>
           <div class="chart-body">
             <canvas id="statsCumulativeChart"></canvas>
           </div>
         </div>
       </div>
-      <!-- 폐기물별 월간 추이 그리드 -->
+      <!-- 폐기물 기간별 추이 그리드 -->
       <div class="chart-card full-width">
-        <div class="chart-header">
-          <h3>폐기물별 월간 추이</h3>
+        <div class="chart-header" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+          <h3>폐기물 기간별 추이</h3>
+          <div class="period-tabs" id="wasteDetailPeriodTabs" style="font-size: 0.82rem;">
+            <button class="period-tab active" data-period="daily">일별</button>
+            <button class="period-tab" data-period="weekly">주별</button>
+            <button class="period-tab" data-period="monthly">월별</button>
+            <button class="period-tab" data-period="quarterly">분기별</button>
+            <button class="period-tab" data-period="yearly">연별</button>
+          </div>
         </div>
       </div>
 
-      <div class="stats-detail-grid">
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">폐공드럼 (개)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailDrum"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">폐IBC (개)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailIbc"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">AO-Tar (톤)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailAoTar"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">메탄올 (톤)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailMethanol"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">유해화학물질 (고상, 톤)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailSolid"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">유해화학물질 (액상, 톤)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailLiquid"></canvas>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <h4 style="font-size: 14px">기타 (톤)</h4>
-          </div>
-          <div class="chart-body" style="height: 200px">
-            <canvas id="statsDetailEtc"></canvas>
-          </div>
-        </div>
+      <div class="stats-detail-grid" id="wasteDetailChartsContainer">
+        <!-- JS에서 동적으로 차트 생성됨 -->
       </div>
 
       <!-- 요약 테이블 -->
       <div class="table-card">
-        <div class="chart-header">
-          <h3><i class="fas fa-table"></i> 기간별 상세 통계</h3>
-          <button class="btn btn-secondary" id="btnExportStats">
-            <i class="fas fa-download"></i> CSV 내보내기
-          </button>
+        <div class="chart-header" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+            <h3><i class="fas fa-table"></i> 기간별 상세 통계</h3>
+            <button class="btn btn-secondary" id="btnExportStats">
+              <i class="fas fa-download"></i> CSV 내보내기
+            </button>
+          </div>
+          <div class="period-tabs" id="statsTablePeriodTabs" style="font-size: 0.82rem;">
+            <button class="period-tab active" data-period="daily">일별</button>
+            <button class="period-tab" data-period="weekly">주별</button>
+            <button class="period-tab" data-period="monthly">월별</button>
+            <button class="period-tab" data-period="quarterly">분기별</button>
+            <button class="period-tab" data-period="yearly">연별</button>
+          </div>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
-            <thead>
-              <tr id="statsTableHeader"></tr>
+            <thead id="statsTableHeader">
+              <!-- JS에서 동적으로 헤더 생성됨 -->
             </thead>
             <tbody id="statsTableBody"></tbody>
           </table>
