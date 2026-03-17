@@ -1353,8 +1353,8 @@ function renderStatsCharts() {
   const yearRecords = APP.records.filter(
     (r) => r.date && r.date.startsWith(year),
   );
-  renderStatsTrendChart(yearRecords, period);
-  renderStatsWasteChart(yearRecords);
+  renderStatsDailyTypeChart(yearRecords, period);
+  renderStatsCumulativeChart(yearRecords, period);
   renderStatsDetailChart(yearRecords, period);
   renderStatsTable(yearRecords, period);
 }
