@@ -2269,7 +2269,7 @@ function exportStatsCSV() {
   });
 
   const sortedKeys = Object.keys(periodData).sort();
-  const header = ["기간","폐공드럼(개)","폐IBC(개)","AO-Tar(톤)","메탄올(톤)","유해화학물질(액상,톤)","유해화학물질(고상,톤)","기타(톤)","총처리량(톤)"];
+  const header = ["기간","폐공드럼(개)","폐IBC(개)","AO-Tar(톤)","메탄올(톤)","\"유해화학물질(액상,톤)\"","\"유해화학물질(고상,톤)\"","기타(톤)","총처리량(톤)"];
   const rows = sortedKeys.map((k) => {
     const d = periodData[k];
     const fmt = (v) => v > 0 ? v.toFixed(2) : "0";
