@@ -1297,8 +1297,8 @@ function initStatsPage() {
   const mainTabContainer = document.querySelector(".stats-filter-bar .period-tabs");
   if (mainTabContainer) {
     mainTabContainer.querySelectorAll(".period-tab").forEach((t) => t.classList.remove("active"));
-    const monthlyTab = mainTabContainer.querySelector('.period-tab[data-period="monthly"]');
-    if (monthlyTab) monthlyTab.classList.add("active");
+    const weeklyTab = mainTabContainer.querySelector('.period-tab[data-period="weekly"]');
+    if (weeklyTab) weeklyTab.classList.add("active");
 
     mainTabContainer.querySelectorAll(".period-tab").forEach((tab) => {
       tab.onclick = () => {
