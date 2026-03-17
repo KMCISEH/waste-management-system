@@ -2211,7 +2211,80 @@ function renderStatsTable(records, _period) {
   }).join("");
 }
 function exportStatsCSV() {
-  showToast("통계 내보내기 완료", "success");
+  const year = document.getElementById("statsYear").value || new Date().getFullYear().toString();
+  const period = document.querySelector("#statsTablePeriodTabs .period-tab.active")?.dataset.period || "daily";
+  const records = APP.records.filter((r) => r.date && r.date.startsWith(year));
+
+  function getPeriodKey(dateStr) {
+    const dateObj = new Date(dateStr);
+    if (period === "daily") return { key: dateStr, label: dateStr };
+    if (period === "weekly") {
+      const dow = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+      const thu = new Date(dateObj); thu.setDate(dateObj.getDate() + (4 - dow));
+      const ys = new Date(thu.getFullYear(), 0, 1);
+      const wk = Math.ceil(((thu - ys) / 86400000 + 1) / 7);
+      const key = `${thu.getFullYear()}-W${String(wk).padStart(2,"0")}`;
+      const mon = new Date(dateObj); mon.setDate(dateObj.getDate() - (dow - 1));
+      const m = mon.getMonth() + 1;
+      const fdm = new Date(mon.getFullYear(), mon.getMonth(), 1);
+      const wom = Math.ceil((mon.getDate() + fdm.getDay()) / 7);
+      return { key, label: `${dateObj.getFullYear()}년 ${m}월 ${wom}주` };
+    }
+    if (period === "monthly") {
+      const key = dateStr.substring(0, 7);
+      return { key, label: `${dateObj.getFullYear()}년 ${dateObj.getMonth() + 1}월` };
+    }
+    if (period === "quarterly") {
+      const q = Math.floor(dateObj.getMonth() / 3) + 1;
+      return { key: `${dateObj.getFullYear()}-${q}Q`, label: `${dateObj.getFullYear()}년 ${q}분기` };
+    }
+    return { key: dateStr.substring(0, 4), label: `${dateStr.substring(0, 4)}년` };
+  }
+
+  const periodData = {};
+  const periodLabels = {};
+  records.forEach((r) => {
+    if (!r.date) return;
+    const { key, label } = getPeriodKey(r.date);
+    if (!periodData[key]) {
+      periodData[key] = { drum: 0, ibc: 0, aoTar: 0, methanol: 0, liquid: 0, solid: 0, etc: 0, total: 0 };
+      periodLabels[key] = label;
+    }
+    const note = (r.category || "").trim();
+    const amount = r.amount || 0;
+    const lowerNote = note.toLowerCase();
+    const drumMatch = note.match(/폐공드럼\s*(\d+)/);
+    const ibcMatch  = note.match(/폐IBC\s*(\d+)/);
+    if (drumMatch) periodData[key].drum += parseInt(drumMatch[1], 10);
+    if (ibcMatch)  periodData[key].ibc  += parseInt(ibcMatch[1],  10);
+    if (lowerNote.includes("ao-tar"))          periodData[key].aoTar    += amount;
+    else if (lowerNote.includes("메탄올"))     periodData[key].methanol += amount;
+    else {
+      const wn = (r.wasteName || "").toLowerCase();
+      if      (wn.includes("액상") || wn.includes("액체")) periodData[key].liquid += amount;
+      else if (wn.includes("고상") || wn.includes("고체")) periodData[key].solid  += amount;
+      else                                                  periodData[key].etc    += amount;
+    }
+    periodData[key].total += amount;
+  });
+
+  const sortedKeys = Object.keys(periodData).sort();
+  const header = ["기간","폐공드럼(개)","폐IBC(개)","AO-Tar(톤)","메탄올(톤)","유해화학물질(액상,톤)","유해화학물질(고상,톤)","기타(톤)","총처리량(톤)"];
+  const rows = sortedKeys.map((k) => {
+    const d = periodData[k];
+    const fmt = (v) => v > 0 ? v.toFixed(2) : "0";
+    return [periodLabels[k], d.drum, d.ibc, fmt(d.aoTar), fmt(d.methanol), fmt(d.liquid), fmt(d.solid), fmt(d.etc), fmt(d.total)].join(",");
+  });
+
+  const csv = "\uFEFF" + [header.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `통계_${year}_${period}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast("CSV 다운로드 완료", "success");
 }
 function groupByPeriod(recs, p) {
   const g = {};
