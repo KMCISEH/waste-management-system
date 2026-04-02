@@ -12,7 +12,7 @@
     rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="styles.css?v=2.2" />
+  <link rel="stylesheet" href="styles.css?v=2.3" />
 </head>
 
 <body>
@@ -188,8 +188,15 @@
         <div class="stat-card stat-drum">
           <div class="stat-icon"><i class="fas fa-drum-steelpan"></i></div>
           <div class="stat-info">
-            <span class="stat-label">폐공드럼 누계</span>
-            <span class="stat-value" id="statDrum">0</span>
+            <span class="stat-label">철드럼 누계</span>
+            <span class="stat-value" id="statSteelDrum">0</span>
+          </div>
+        </div>
+        <div class="stat-card stat-pe-drum">
+          <div class="stat-icon"><i class="fas fa-database"></i></div>
+          <div class="stat-info">
+            <span class="stat-label">PE드럼 누계</span>
+            <span class="stat-value" id="statPEDrum">0</span>
           </div>
         </div>
         <div class="stat-card stat-ibc">
@@ -745,7 +752,7 @@
   <!-- 토스트 알림 -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="app.js?v=2.2"></script>
+  <script src="app.js?v=2.3"></script>
 </body>
 
 </html>

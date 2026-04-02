@@ -302,6 +302,15 @@ function initDashboard() {
     .map((y) => `<option value="${y}">${y}년</option>`)
     .join("");
   yearSelect.value = currentYear;
+  const chartYearSelect = document.getElementById("chartYearSelect");
+  if (chartYearSelect) {
+    chartYearSelect.innerHTML = yearSelect.innerHTML;
+    chartYearSelect.value = currentYear;
+    chartYearSelect.onchange = () => {
+      yearSelect.value = chartYearSelect.value;
+      renderDashboard();
+    };
+  }
 
   // 현재 월 선택
   monthSelect.value = "all"; // 기본값 전체
@@ -344,20 +353,27 @@ function renderDashboard() {
   const pendingBadge = document.getElementById("pendingBadge");
   if (pendingBadge) pendingBadge.textContent = pendingCount;
 
-  // 폐공드럼, 폐IBC 통계 집계 (필터링된 데이터 기준)
-  let totalDrum = 0;
+  // 폐공드럼(철드럼/PE드럼), 폐IBC 통계 집계 (필터링된 데이터 기준)
+  let totalSteelDrum = 0;
+  let totalPEDrum = 0;
   let totalIbc = 0;
   filteredRecords.forEach((r) => {
     const note = r.category || "";
-    const drumMatch = note.match(/폐공드럼\s*(\d+)/);
+    const steelDrumMatch = note.match(/철드럼\s*(\d+)/);
+    const peDrumMatch = note.match(/PE드럼\s*(\d+)/);
+    const oldDrumMatch = note.match(/폐공드럼\s*(\d+)/);
     const ibcMatch = note.match(/폐IBC\s*(\d+)/);
-    if (drumMatch) totalDrum += parseInt(drumMatch[1], 10);
+    if (steelDrumMatch) totalSteelDrum += parseInt(steelDrumMatch[1], 10);
+    if (peDrumMatch) totalPEDrum += parseInt(peDrumMatch[1], 10);
+    if (oldDrumMatch && !steelDrumMatch) totalSteelDrum += parseInt(oldDrumMatch[1], 10);
     if (ibcMatch) totalIbc += parseInt(ibcMatch[1], 10);
   });
 
-  const statDrum = document.getElementById("statDrum");
+  const statSteelDrum = document.getElementById("statSteelDrum");
+  const statPEDrum = document.getElementById("statPEDrum");
   const statIBC = document.getElementById("statIBC");
-  if (statDrum) statDrum.textContent = totalDrum.toLocaleString();
+  if (statSteelDrum) statSteelDrum.textContent = totalSteelDrum.toLocaleString();
+  if (statPEDrum) statPEDrum.textContent = totalPEDrum.toLocaleString();
   if (statIBC) statIBC.textContent = totalIbc.toLocaleString();
 
   if (pendingBadge) {
@@ -598,16 +614,20 @@ async function editRecordAction(id) {
   const editCategoryContainer =
     document.getElementById("editCategory").parentNode;
 
-  // 유광드럼 전용 입력 UI 생성
+  // 유광드럼 전용 입력 UI 생성 (철드럼/PE드럼/폐IBC) - 세로 일렬 배치
   const drumInputsHTML = `
-    <div id="editDrumInputs" style="display:none; gap:10px; margin-top:5px;">
-      <div style="flex:1">
-        <label style="font-size:0.8rem">폐공드럼</label>
-        <input type="number" id="editDrumQty" class="form-control" placeholder="수량">
+    <div id="editDrumInputs" style="display:none; flex-direction:column; gap:6px; margin-top:5px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="font-size:0.78rem; width:60px; flex-shrink:0;">철드럼</label>
+        <input type="number" id="editSteelDrumQty" class="form-control" placeholder="수량" min="0" style="flex:1;">
       </div>
-      <div style="flex:1">
-        <label style="font-size:0.8rem">폐IBC</label>
-        <input type="number" id="editIbcQty" class="form-control" placeholder="수량">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="font-size:0.78rem; width:60px; flex-shrink:0;">PE드럼</label>
+        <input type="number" id="editPEDrumQty" class="form-control" placeholder="수량" min="0" style="flex:1;">
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="font-size:0.78rem; width:60px; flex-shrink:0;">폐IBC</label>
+        <input type="number" id="editIbcQty" class="form-control" placeholder="수량" min="0" style="flex:1;">
       </div>
     </div>
   `;
@@ -621,14 +641,18 @@ async function editRecordAction(id) {
     if (val.includes("유광드럼")) {
       categoryInput.style.display = "none";
       drumInputs.style.display = "flex";
+      drumInputs.style.flexDirection = "column";
 
       // 기존 값 파싱
       if (!drumInputs.dataset.initialized) {
         const currentVal = categoryInput.value;
-        const drumMatch = currentVal.match(/폐공드럼\s*(\d+)/);
+        const steelMatch = currentVal.match(/철드럼\s*(\d+)/);
+        const peMatch = currentVal.match(/PE드럼\s*(\d+)/);
+        const oldDrumMatch = !steelMatch ? currentVal.match(/폐공드럼\s*(\d+)/) : null;
         const ibcMatch = currentVal.match(/폐IBC\s*(\d+)/);
-        if (drumMatch)
-          document.getElementById("editDrumQty").value = drumMatch[1];
+        if (steelMatch) document.getElementById("editSteelDrumQty").value = steelMatch[1];
+        else if (oldDrumMatch) document.getElementById("editSteelDrumQty").value = oldDrumMatch[1];
+        if (peMatch) document.getElementById("editPEDrumQty").value = peMatch[1];
         if (ibcMatch) document.getElementById("editIbcQty").value = ibcMatch[1];
         drumInputs.dataset.initialized = "true";
       }
@@ -649,14 +673,17 @@ async function editRecordAction(id) {
   }
 
   // 드럼/IBC 입력 시 기존 비고란 업데이트
-  document.getElementById("editDrumQty").oninput = updateDrumCategory;
+  document.getElementById("editSteelDrumQty").oninput = updateDrumCategory;
+  document.getElementById("editPEDrumQty").oninput = updateDrumCategory;
   document.getElementById("editIbcQty").oninput = updateDrumCategory;
 
   function updateDrumCategory() {
-    const d = document.getElementById("editDrumQty").value;
+    const s = document.getElementById("editSteelDrumQty").value;
+    const pe = document.getElementById("editPEDrumQty").value;
     const i = document.getElementById("editIbcQty").value;
     const parts = [];
-    if (d) parts.push(`폐공드럼 ${d}`);
+    if (s) parts.push(`철드럼 ${s}`);
+    if (pe) parts.push(`PE드럼 ${pe}`);
     if (i) parts.push(`폐IBC ${i}`);
     document.getElementById("editCategory").value = parts.join(", ");
   }
@@ -1360,9 +1387,9 @@ function renderStatsCharts() {
 }
 
 // CHART LOGIC
-function renderMonthlyChart() {
-  const year =
-    document.getElementById("chartYearSelect").value ||
+function renderMonthlyChart(yearParam) {
+  const year = yearParam || 
+    document.getElementById("dashboardYear")?.value ||
     new Date().getFullYear().toString();
   const mData = Array.from({ length: 12 }, () => ({ count: 0, amount: 0 }));
   APP.records.forEach((r) => {
@@ -1404,104 +1431,6 @@ function renderMonthlyChart() {
   });
 }
 
-function renderWasteTypeChart() {
-  const map = {};
-  APP.records.forEach((r) => {
-    const n = shortenWasteName(r.wasteName);
-    map[n] = (map[n] || 0) + (r.amount || 0);
-  });
-  const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
-  const premiumPalette = [
-    "#6366f1",
-    "#10b981",
-    "#f59e0b",
-    "#ef4444",
-    "#06b6d4",
-    "#8b5cf6",
-    "#ec4899",
-    "#f97316",
-    "#14b8a6",
-    "#3b82f6",
-  ];
-
-  if (APP.charts.wasteType) APP.charts.wasteType.destroy();
-  APP.charts.wasteType = new Chart(document.getElementById("wasteTypeChart"), {
-    type: "doughnut",
-    data: {
-      labels: sorted.map((s) => s[0]),
-      datasets: [
-        {
-          data: sorted.map((s) => s[1].toFixed(1)),
-          backgroundColor: premiumPalette,
-          borderWidth: 2,
-          borderColor: "rgba(255, 255, 255, 0.1)",
-        },
-      ],
-    },
-    options: {
-      cutout: "70%",
-      plugins: {
-        legend: {
-          position: "bottom",
-          labels: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue("--text-primary")
-              .trim(),
-            font: { size: 11 },
-            padding: 15,
-            usePointStyle: true,
-          },
-        },
-      },
-    },
-  });
-}
-
-function renderProcessorChart() {
-  const map = {};
-  APP.records.forEach((r) => {
-    const n = normalizeProcessor(r.processor);
-    map[n] = (map[n] || 0) + (r.amount || 0);
-  });
-  const sorted = Object.entries(map)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-  if (APP.charts.processor) APP.charts.processor.destroy();
-  APP.charts.processor = new Chart(document.getElementById("processorChart"), {
-    type: "bar",
-    data: {
-      labels: sorted.map((s) => s[0]),
-      datasets: [
-        {
-          data: sorted.map((s) => s[1].toFixed(1)),
-          backgroundColor: "#6366f1",
-        },
-      ],
-    },
-    options: {
-      indexAxis: "y",
-      plugins: { legend: { display: false } },
-      scales: {
-        x: {
-          grid: { color: "rgba(100, 116, 139, 0.2)" },
-          ticks: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue("--text-primary")
-              .trim(),
-          },
-        },
-        y: {
-          grid: { display: false },
-          ticks: {
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue("--text-primary")
-              .trim(),
-          },
-        },
-      },
-    },
-  });
-}
 
 // UTILS
 function shortenWasteName(n) {
@@ -2513,7 +2442,14 @@ async function loadAllLiquidWasteData() {
 function renderLiquidWasteStats(data) {
   const totalAmount = data.reduce((s, r) => s + (r.amount_kg || 0), 0);
   const totalEA = data.reduce((s, r) => s + (r.quantity_ea || 0), 0);
-  const teams = new Set(data.filter((r) => r.team).map((r) => r.team));
+  
+  // 팀명 통일 (품보팀 -> 품질보증팀) 및 고정 리스트 내의 팀만 카운트
+  const teams = new Set(
+    data
+      .filter((r) => r.team)
+      .map((r) => (r.team === "품보팀" ? "품질보증팀" : r.team))
+      .filter((team) => LW_FIXED_TEAMS.includes(team))
+  );
   const months = new Set(data.map((r) => r.year_month));
 
   document.getElementById("lwTotalAmount").textContent = (
@@ -2824,8 +2760,9 @@ const COST_CONFIG = {
   },
   // 잡이익: processor=유광드럼
   revenue: {
-    "폐공드럼": 2500,   // 개당
-    "폐IBC": 20000,     // 개당
+    "철드럼": 2500,    // 개당
+    "PE드럼": 500,     // 개당
+    "폐IBC": 20000,   // 개당
   },
 };
 
@@ -2883,7 +2820,7 @@ async function exportCostExcel() {
   // 업체+폐기물별 집계
   const procMap = {};     // key: processor_wasteName → 처리비
   const transMap = {};    // key: carrier_processor_note → 운반비
-  const drumMap = { drums: 0, ibcs: 0 };
+  const drumMap = { steelDrums: 0, peDrums: 0, ibcs: 0 };
 
   filtered.forEach((r) => {
     const procNorm = normalizeProcessor(r.processor);
@@ -2939,8 +2876,9 @@ async function exportCostExcel() {
 
     // 3) 잡이익 (유광드럼)
     if (procNorm.includes("유광드럼")) {
-      const { drums, ibcs } = parseDrumIbcCount(r.category);
-      drumMap.drums += drums;
+      const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(r.category);
+      drumMap.steelDrums += steelDrums;
+      drumMap.peDrums += peDrums;
       drumMap.ibcs += ibcs;
     }
   });
@@ -2952,22 +2890,35 @@ async function exportCostExcel() {
   Object.values(transMap).forEach((t) => transport.push(t));
 
   // 잡이익 배열 구성
-  if (drumMap.drums > 0) {
+  const yugwangWasteName = shortenWasteName(filtered.find(r => normalizeProcessor(r.processor).includes("유광드럼"))?.wasteName || "");
+  if (drumMap.steelDrums > 0) {
     revenue.push({
       processor: "유광드럼",
-      wasteName: shortenWasteName(filtered.find(r => normalizeProcessor(r.processor).includes("유광드럼"))?.wasteName || ""),
+      wasteName: yugwangWasteName,
       type: "철드럼",
       classCode: "090300",
-      ea: drumMap.drums,
-      unitCost: COST_CONFIG.revenue["폐공드럼"],
-      cost: drumMap.drums * COST_CONFIG.revenue["폐공드럼"],
+      ea: drumMap.steelDrums,
+      unitCost: COST_CONFIG.revenue["철드럼"],
+      cost: drumMap.steelDrums * COST_CONFIG.revenue["철드럼"],
+      note: "재활용",
+    });
+  }
+  if (drumMap.peDrums > 0) {
+    revenue.push({
+      processor: "유광드럼",
+      wasteName: yugwangWasteName,
+      type: "PE드럼",
+      classCode: "090300",
+      ea: drumMap.peDrums,
+      unitCost: COST_CONFIG.revenue["PE드럼"],
+      cost: drumMap.peDrums * COST_CONFIG.revenue["PE드럼"],
       note: "재활용",
     });
   }
   if (drumMap.ibcs > 0) {
     revenue.push({
       processor: "유광드럼",
-      wasteName: shortenWasteName(filtered.find(r => normalizeProcessor(r.processor).includes("유광드럼"))?.wasteName || ""),
+      wasteName: yugwangWasteName,
       type: "IBC용기",
       classCode: "090300",
       ea: drumMap.ibcs,
@@ -3032,13 +2983,17 @@ function getTransportCostPerTon(carrierNorm, processorNorm) {
 }
 
 function parseDrumIbcCount(category) {
-  let drums = 0, ibcs = 0;
-  if (!category) return { drums, ibcs };
-  const drumMatch = category.match(/폐공드럼\s*(\d+)/);
+  let steelDrums = 0, peDrums = 0, ibcs = 0;
+  if (!category) return { steelDrums, peDrums, ibcs };
+  const steelMatch = category.match(/철드럼\s*(\d+)/);
+  const peMatch = category.match(/PE드럼\s*(\d+)/);
+  const oldDrumMatch = !steelMatch ? category.match(/폐공드럼\s*(\d+)/) : null;
   const ibcMatch = category.match(/폐IBC\s*(\d+)/);
-  if (drumMatch) drums = parseInt(drumMatch[1], 10);
+  if (steelMatch) steelDrums = parseInt(steelMatch[1], 10);
+  else if (oldDrumMatch) steelDrums = parseInt(oldDrumMatch[1], 10);
+  if (peMatch) peDrums = parseInt(peMatch[1], 10);
   if (ibcMatch) ibcs = parseInt(ibcMatch[1], 10);
-  return { drums, ibcs };
+  return { steelDrums, peDrums, ibcs };
 }
 
 function calculateMonthlyCost(records) {
@@ -3067,8 +3022,10 @@ function calculateMonthlyCost(records) {
     // 3) 잡이익 계산 (유광드럼인 경우)
     let revenue = 0;
     if (procNorm.includes("유광드럼")) {
-      const { drums, ibcs } = parseDrumIbcCount(r.category);
-      revenue = drums * COST_CONFIG.revenue["폐공드럼"] + ibcs * COST_CONFIG.revenue["폐IBC"];
+      const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(r.category);
+      revenue = steelDrums * COST_CONFIG.revenue["철드럼"]
+              + peDrums * COST_CONFIG.revenue["PE드럼"]
+              + ibcs * COST_CONFIG.revenue["폐IBC"];
     }
 
     m.processCost += processCost;
@@ -3152,8 +3109,9 @@ function renderCostPage() {
       bp.transportCost += d.transportCost;
       bp.revenue += d.revenue;
       if (d.processor.includes("유광드럼")) {
-        const { drums, ibcs } = parseDrumIbcCount(d.category);
-        bp.drums += drums;
+        const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(d.category);
+        bp.drums += steelDrums;
+        bp.peDrums = (bp.peDrums || 0) + peDrums;
         bp.ibcs += ibcs;
       }
 
@@ -3168,6 +3126,7 @@ function renderCostPage() {
           transportCost: 0,
           revenue: 0,
           drums: 0,
+          peDrums: 0,
           ibcs: 0,
         };
       }
@@ -3177,24 +3136,68 @@ function renderCostPage() {
       bw.transportCost += d.transportCost;
       bw.revenue += d.revenue;
       if (d.processor.includes("유광드럼")) {
-        const { drums, ibcs } = parseDrumIbcCount(d.category);
-        bw.drums += drums;
+        const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(d.category);
+        bw.drums += steelDrums;
+        bw.peDrums = (bw.peDrums || 0) + peDrums;
         bw.ibcs += ibcs;
       }
     });
   }
 
+  // ★ 유광드럼: byWaste를 드럼 종류별(철드럼/PE드럼/폐IBC) 서브행으로 재구성
+  Object.values(byProcessor).forEach((bp) => {
+    if (!bp.processor.includes("유광드럼")) return;
+
+    let totalSteel = 0, totalPE = 0, totalIbc = 0;
+    for (const m of Object.values(monthlyData)) {
+      m.details.forEach((d) => {
+        if (d.processor.includes("유광드럼")) {
+          const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(d.category);
+          totalSteel += steelDrums;
+          totalPE += peDrums;
+          totalIbc += ibcs;
+        }
+      });
+    }
+
+    bp.byWaste = {};
+    if (totalSteel > 0) {
+      const cost = totalSteel * COST_CONFIG.revenue["철드럼"];
+      bp.byWaste["철드럼"] = {
+        wasteName: "철드럼", amountLabel: "-", ea: totalSteel,
+        unitCost: COST_CONFIG.revenue["철드럼"],
+        processCost: 0, transportCost: 0, revenue: cost, isDrumRow: true,
+      };
+    }
+    if (totalPE > 0) {
+      const cost = totalPE * COST_CONFIG.revenue["PE드럼"];
+      bp.byWaste["PE드럼"] = {
+        wasteName: "PE드럼", amountLabel: "-", ea: totalPE,
+        unitCost: COST_CONFIG.revenue["PE드럼"],
+        processCost: 0, transportCost: 0, revenue: cost, isDrumRow: true,
+      };
+    }
+    if (totalIbc > 0) {
+      const cost = totalIbc * COST_CONFIG.revenue["폐IBC"];
+      bp.byWaste["폐IBC"] = {
+        wasteName: "폐IBC", amountLabel: "-", ea: totalIbc,
+        unitCost: COST_CONFIG.revenue["폐IBC"],
+        processCost: 0, transportCost: 0, revenue: cost, isDrumRow: true,
+      };
+    }
+    bp.revenue = Object.values(bp.byWaste).reduce((s, w) => s + w.revenue, 0);
+  });
+
   // 테이블 헤더
   document.getElementById("costDetailHead").innerHTML = `<tr>
-    <th>처리업체 / 폐기물 종류</th>
-    <th>처리량<br><small>(톤)</small></th>
-    <th>단가<br><small>(원/톤)</small></th>
-    <th>처리비<br><small>(원)</small></th>
-    <th>운반비<br><small>(원)</small></th>
-    <th>잡이익<br><small>(원)</small></th>
-    <th>소계<br><small>(원)</small></th>
+    <th style="text-align:left;">처리업체 / 폐기물 종류</th>
+    <th style="text-align:right;">처리량<br><small>(톤 · 개)</small></th>
+    <th style="text-align:right;">단가<br><small>(원/톤 · 원/개)</small></th>
+    <th style="text-align:right;">처리비<br><small>(원)</small></th>
+    <th style="text-align:right;">운반비<br><small>(원)</small></th>
+    <th style="text-align:right;">잡이익<br><small>(원)</small></th>
+    <th style="text-align:right;">소계<br><small>(원)</small></th>
   </tr>`;
-
   // 테이블 바디
   const processors = Object.values(byProcessor).sort((a, b) =>
     (b.processCost + b.transportCost) - (a.processCost + a.transportCost)
@@ -3211,27 +3214,42 @@ function renderCostPage() {
       const wasteTypes = Object.values(p.byWaste).sort((a, b) => b.processCost - a.processCost);
       const hasMultipleWastes = wasteTypes.length > 1;
 
-      // 업체 헤더 행 (여러 폐기물 종류가 있을 때만)
+      // 업체 헤더 행
       if (hasMultipleWastes) {
-        let extraInfo = "";
-        if (p.drums > 0 || p.ibcs > 0) {
-          const parts = [];
-          if (p.drums > 0) parts.push(`폐공드럼 ${p.drums.toLocaleString()}개`);
-          if (p.ibcs > 0) parts.push(`폐IBC ${p.ibcs.toLocaleString()}개`);
-          extraInfo = ` <small style="color:var(--text-muted)">(${parts.join(", ")})</small>`;
-        }
+        const isYugwang = p.processor.includes("유광드럼");
+        const icon = isYugwang ? "fas fa-recycle" : "fas fa-building";
+        const iconColor = isYugwang ? "var(--success)" : "var(--primary-light)";
+        const extraInfo = isYugwang
+          ? ` <small style="color:var(--success)">잡이익 합계: ${p.revenue.toLocaleString()}원</small>`
+          : "";
         bodyHtml += `<tr style="background:var(--bg-glass);">
-          <td colspan="7" style="text-align:left;"><strong><i class="fas fa-building" style="margin-right:6px;color:var(--primary-light);"></i>${p.processor}</strong>${extraInfo}</td>
+          <td colspan="7" style="text-align:left;"><strong><i class="${icon}" style="margin-right:6px;color:${iconColor};"></i>${p.processor}</strong>${extraInfo}</td>
         </tr>`;
       }
 
       // 폐기물 종류별 상세 행
       wasteTypes.forEach((w) => {
         const wSubtotal = w.processCost + w.transportCost - w.revenue;
-        let drumInfo = "";
-        if (w.drums > 0 || w.ibcs > 0) {
+
+        // ★ 유광드럼 서브행 (드럼 종류별)
+        if (w.isDrumRow) {
+          const indent = 'style="padding-left:32px;"';
+          const label = `<span style="color:var(--text-secondary);">└</span> ${w.wasteName}`;
+          bodyHtml += `<tr>
+            <td ${indent}>${label}</td>
+            <td style="text-align:right;">${w.ea.toLocaleString()}<small style="font-size:0.72rem">개</small></td>
+            <td style="text-align:right; color:var(--text-secondary);">${w.unitCost.toLocaleString()}<small style="font-size:0.72rem">/개</small></td>
+            <td style="text-align:right;">-</td>
+            <td style="text-align:right;">-</td>
+            <td style="text-align:right; color:var(--success);">${w.revenue.toLocaleString()}</td>
+            <td style="text-align:right; color:var(--success);">${(-wSubtotal).toLocaleString()}</td>
+          </tr>`;
+          return;
+        }
+        if (w.drums > 0 || (w.peDrums||0) > 0 || w.ibcs > 0) {
           const parts = [];
-          if (w.drums > 0) parts.push(`폐공드럼 ${w.drums.toLocaleString()}개`);
+          if (w.drums > 0) parts.push(`철드럼 ${w.drums.toLocaleString()}개`);
+          if ((w.peDrums||0) > 0) parts.push(`PE드럼 ${w.peDrums.toLocaleString()}개`);
           if (w.ibcs > 0) parts.push(`폐IBC ${w.ibcs.toLocaleString()}개`);
           drumInfo = `<br><small style="color:var(--text-muted)">${parts.join(", ")}</small>`;
         }
@@ -3243,25 +3261,25 @@ function renderCostPage() {
 
         bodyHtml += `<tr>
           <td ${indent}>${label}</td>
-          <td>${w.amount.toFixed(2)}</td>
-          <td>${w.costPerTon > 0 ? w.costPerTon.toLocaleString() : "-"}</td>
-          <td style="color:var(--danger)">${w.processCost > 0 ? w.processCost.toLocaleString() : "-"}</td>
-          <td style="color:var(--warning)">${w.transportCost > 0 ? w.transportCost.toLocaleString() : "-"}</td>
-          <td style="color:var(--success)">${w.revenue > 0 ? w.revenue.toLocaleString() : "-"}</td>
-          <td>${wSubtotal.toLocaleString()}</td>
+          <td style="text-align:right;">${w.amount.toFixed(2)}</td>
+          <td style="text-align:right;">${w.costPerTon > 0 ? w.costPerTon.toLocaleString() : "-"}</td>
+          <td style="text-align:right; color:var(--danger)">${w.processCost > 0 ? w.processCost.toLocaleString() : "-"}</td>
+          <td style="text-align:right; color:var(--warning)">${w.transportCost > 0 ? w.transportCost.toLocaleString() : "-"}</td>
+          <td style="text-align:right; color:var(--success)">${w.revenue > 0 ? w.revenue.toLocaleString() : "-"}</td>
+          <td style="text-align:right;">${wSubtotal.toLocaleString()}</td>
         </tr>`;
       });
 
-      // 업체 소계 행 (여러 폐기물 종류가 있을 때만)
+      // 업체 소계 행
       if (hasMultipleWastes) {
         bodyHtml += `<tr style="background:var(--bg-glass);font-weight:600;">
           <td style="text-align:right;">소계</td>
-          <td>${p.totalAmount.toFixed(2)}</td>
-          <td>-</td>
-          <td style="color:var(--danger)">${p.processCost > 0 ? p.processCost.toLocaleString() : "-"}</td>
-          <td style="color:var(--warning)">${p.transportCost > 0 ? p.transportCost.toLocaleString() : "-"}</td>
-          <td style="color:var(--success)">${p.revenue > 0 ? p.revenue.toLocaleString() : "-"}</td>
-          <td><strong>${subtotal.toLocaleString()}</strong></td>
+          <td style="text-align:right;">${p.totalAmount > 0 ? p.totalAmount.toFixed(2) : "-"}</td>
+          <td style="text-align:right;">-</td>
+          <td style="text-align:right; color:var(--danger)">${p.processCost > 0 ? p.processCost.toLocaleString() : "-"}</td>
+          <td style="text-align:right; color:var(--warning)">${p.transportCost > 0 ? p.transportCost.toLocaleString() : "-"}</td>
+          <td style="text-align:right; color:var(--success)">${p.revenue > 0 ? p.revenue.toLocaleString() : "-"}</td>
+          <td style="text-align:right;"><strong>${subtotal.toLocaleString()}</strong></td>
         </tr>`;
       }
     });
@@ -3269,12 +3287,12 @@ function renderCostPage() {
     // 합계 행
     bodyHtml += `<tr style="background:var(--bg-secondary);font-weight:bold;">
       <td>합 계</td>
-      <td>${processors.reduce((s, p) => s + p.totalAmount, 0).toFixed(2)}</td>
-      <td>-</td>
-      <td style="color:var(--danger)">${totalProcess.toLocaleString()}</td>
-      <td style="color:var(--warning)">${totalTransport.toLocaleString()}</td>
-      <td style="color:var(--success)">${totalRevenue.toLocaleString()}</td>
-      <td>${totalNet.toLocaleString()}</td>
+      <td style="text-align:right;">${processors.reduce((s, p) => s + p.totalAmount, 0).toFixed(2)}</td>
+      <td style="text-align:right;">-</td>
+      <td style="text-align:right; color:var(--danger)">${totalProcess.toLocaleString()}</td>
+      <td style="text-align:right; color:var(--warning)">${totalTransport.toLocaleString()}</td>
+      <td style="text-align:right; color:var(--success)">${totalRevenue.toLocaleString()}</td>
+      <td style="text-align:right;">${totalNet.toLocaleString()}</td>
     </tr>`;
 
     document.getElementById("costDetailBody").innerHTML = bodyHtml;
