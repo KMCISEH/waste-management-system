@@ -3246,6 +3246,7 @@ function renderCostPage() {
           </tr>`;
           return;
         }
+        let drumInfo = "";
         if (w.drums > 0 || (w.peDrums||0) > 0 || w.ibcs > 0) {
           const parts = [];
           if (w.drums > 0) parts.push(`철드럼 ${w.drums.toLocaleString()}개`);
