@@ -3189,7 +3189,7 @@ function renderCostPage() {
         }
         bhp.byWaste[wKey].transportCost += d.transportCost;
       } else {
-        bp.transportCost += d.transportCost;
+        // bp.transportCost += d.transportCost; // [v2.9] 이중 집계 방지를 위해 제거 (if-else 문에서 처리됨)
         
         const wKey = d.wasteName || "기타";
         if (bp.byWaste[wKey]) {
@@ -3223,7 +3223,7 @@ function renderCostPage() {
       const bw = bp.byWaste[wKey];
       bw.amount += d.amount;
       bw.processCost += d.processCost;
-      bw.transportCost += d.transportCost;
+      // bw.transportCost += d.transportCost; // [v2.9] 이중 집계 방지를 위해 제거 (상단 분리 로직에서 처리됨)
       bw.revenue += d.revenue;
       if (d.processor.includes("유광드럼")) {
         const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(d.category);
