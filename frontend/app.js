@@ -3135,8 +3135,10 @@ function renderCostPage() {
 
   // 업체별 → 폐기물 종류별 2중 집계
   const byProcessor = {};
+  let actualGrandAmount = 0; // [v3.0] 테이블 하단 합계용 실제 톤수 (중복 방지)
   for (const m of Object.values(monthlyData)) {
     m.details.forEach((d) => {
+      actualGrandAmount += d.amount;
       const pKey = d.processor;
       if (!byProcessor[pKey]) {
         byProcessor[pKey] = {
@@ -3172,13 +3174,13 @@ function renderCostPage() {
         const bhp = byProcessor[hKey];
         bhp.transportCost += d.transportCost;
         
-        // 상세 폐기물 종류별로도 운반비 분리
+        // [v3.0] 해동이앤티 운반 전용 항목에도 수량과 단가 표시
         const wKey = d.wasteName || "기타";
         if (!bhp.byWaste[wKey]) {
           bhp.byWaste[wKey] = {
             wasteName: wKey,
             amount: 0,
-            costPerTon: 0,
+            costPerTon: d.transportPerTon,
             processCost: 0,
             transportCost: 0,
             revenue: 0,
@@ -3187,7 +3189,9 @@ function renderCostPage() {
             ibcs: 0,
           };
         }
+        bhp.byWaste[wKey].amount += d.amount;
         bhp.byWaste[wKey].transportCost += d.transportCost;
+        bhp.totalAmount += d.amount; // 업체 소계용 (하단 합계에는 actualGrandAmount 사용)
       } else {
         // bp.transportCost += d.transportCost; // [v2.9] 이중 집계 방지를 위해 제거 (if-else 문에서 처리됨)
         
@@ -3378,7 +3382,7 @@ function renderCostPage() {
     // 합계 행
     bodyHtml += `<tr style="background:var(--bg-secondary);font-weight:bold;">
       <td>합 계</td>
-      <td style="text-align:right;">${processors.reduce((s, p) => s + p.totalAmount, 0).toFixed(2)}</td>
+      <td style="text-align:right;">${actualGrandAmount.toFixed(2)}</td>
       <td style="text-align:right;">-</td>
       <td style="text-align:right; color:var(--danger)">${totalProcess.toLocaleString()}</td>
       <td style="text-align:right; color:var(--warning)">${totalTransport.toLocaleString()}</td>
