@@ -3153,7 +3153,50 @@ function renderCostPage() {
       const bp = byProcessor[pKey];
       bp.totalAmount += d.amount;
       bp.processCost += d.processCost;
-      bp.transportCost += d.transportCost;
+      
+      // [v2.8] 운반비 분리 로직: 운반업체가 해동이앤티인 경우 별도 그룹으로 분리
+      if (d.carrier === "해동이앤티" && d.processor !== "해동이앤티") {
+        const hKey = "해동이앤티";
+        if (!byProcessor[hKey]) {
+          byProcessor[hKey] = {
+            processor: hKey,
+            totalAmount: 0,
+            processCost: 0,
+            transportCost: 0,
+            revenue: 0,
+            drums: 0,
+            ibcs: 0,
+            byWaste: {},
+          };
+        }
+        const bhp = byProcessor[hKey];
+        bhp.transportCost += d.transportCost;
+        
+        // 상세 폐기물 종류별로도 운반비 분리
+        const wKey = d.wasteName || "기타";
+        if (!bhp.byWaste[wKey]) {
+          bhp.byWaste[wKey] = {
+            wasteName: wKey,
+            amount: 0,
+            costPerTon: 0,
+            processCost: 0,
+            transportCost: 0,
+            revenue: 0,
+            drums: 0,
+            peDrums: 0,
+            ibcs: 0,
+          };
+        }
+        bhp.byWaste[wKey].transportCost += d.transportCost;
+      } else {
+        bp.transportCost += d.transportCost;
+        
+        const wKey = d.wasteName || "기타";
+        if (bp.byWaste[wKey]) {
+          bp.byWaste[wKey].transportCost += d.transportCost;
+        }
+      }
+      
       bp.revenue += d.revenue;
       if (d.processor.includes("유광드럼")) {
         const { steelDrums, peDrums, ibcs } = parseDrumIbcCount(d.category);
