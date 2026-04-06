@@ -2824,7 +2824,7 @@ async function exportCostExcel() {
 
   filtered.forEach((r) => {
     const procNorm = normalizeProcessor(r.processor);
-    const carrierNorm = normalizeProcessor(r.carrier || "");
+    let carrierNorm = normalizeProcessor(r.carrier || "");
     const amount = r.amount || 0;
     const wasteName = r.wasteName || "";
     const phase = getPhaseFromWaste(wasteName);
@@ -2854,8 +2854,15 @@ async function exportCostExcel() {
       }
     }
 
-    // 2) 운반비
-    const transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
+    // 2) 운반비 (해동이앤티 전용 특수 로직 우선 적용)
+    let transportPerTon;
+    if (r.category && r.category.includes("해동이앤티")) {
+      transportPerTon = 50000;
+      carrierNorm = "해동이앤티";
+    } else {
+      transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
+    }
+
     if (transportPerTon > 0) {
       const tKey = `${carrierNorm}_${procNorm}_${r.category || ""}`;
       if (!transMap[tKey]) {
@@ -3008,16 +3015,23 @@ function calculateMonthlyCost(records) {
     }
     const m = monthlyMap[monthKey];
     const procNorm = normalizeProcessor(r.processor);
-    const carrierNorm = normalizeProcessor(r.carrier || "");
+    let carrierNorm = normalizeProcessor(r.carrier || "");
     const amount = r.amount || 0;
 
     // 1) 처리비 계산
     const costPerTon = getProcessingCostPerTon(procNorm, r.wasteName);
     const processCost = Math.round(costPerTon * amount);
 
-    // 2) 운반비 계산
-    const transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
-    const transportCost = Math.round(transportPerTon * amount);
+    // 2) 운반비 계산 (해동이앤티 전용 특수 로직 우선 적용)
+    let transportPerTon, transportCost;
+    if (r.category && r.category.includes("해동이앤티")) {
+      transportPerTon = 50000;
+      transportCost = Math.round(transportPerTon * amount);
+      carrierNorm = "해동이앤티"; // 정산 업체를 해동이앤티로 강제 지정
+    } else {
+      transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
+      transportCost = Math.round(transportPerTon * amount);
+    }
 
     // 3) 잡이익 계산 (유광드럼인 경우)
     let revenue = 0;
