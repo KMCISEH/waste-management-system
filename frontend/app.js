@@ -2831,7 +2831,8 @@ async function exportCostExcel() {
     const classCode = getClassCode(wasteName);
 
     // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
-    const isHaedongInNote = r.category && r.category.includes("해동이앤티");
+    const noteStr = (r.category || "") + (r.note1 || "") + (r.note2 || "");
+    const isHaedongInNote = /해동이[앤엔]티/.test(noteStr);
     const isWasteSolvent = (wasteName || "").includes("폐유기용제");
     let transportPerTon;
 
@@ -3029,7 +3030,8 @@ function calculateMonthlyCost(records) {
     const amount = r.amount || 0;
 
     // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
-    const isHaedongInNote = r.category && r.category.includes("해동이앤티");
+    const noteStr = (r.category || "") + (r.note1 || "") + (r.note2 || "");
+    const isHaedongInNote = /해동이[앤엔]티/.test(noteStr);
     const isWasteSolvent = (r.wasteName || "").includes("폐유기용제");
     let transportPerTon, transportCost;
 
