@@ -1535,7 +1535,17 @@ function getFilteredRecords(excludeCol = null) {
     .filter((r) => {
       if (s && !JSON.stringify(r).toLowerCase().includes(s)) return false;
       if (w && r.wasteName !== w) return false;
-      if (p && r.processor !== p) return false;
+      if (w && r.wasteName !== w) return false;
+      
+      // 업체 필터(p)가 해동이앤티인 경우, 비고란에 '해동' 키워드가 있으면 노출 허용 (필터 편의성 강화)
+      if (p) {
+        const isHaedongInNote = /해동이[앤엔]티/.test((r.category || "") + (r.note1 || "") + (r.note2 || ""));
+        if (p === "해동이앤티") {
+          if (r.processor !== p && !isHaedongInNote) return false;
+        } else {
+          if (r.processor !== p) return false;
+        }
+      }
 
       // 컬럼별 상세 필터링
       for (const [col, val] of Object.entries(colFilters)) {
