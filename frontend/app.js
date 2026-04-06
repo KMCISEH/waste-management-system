@@ -2823,14 +2823,33 @@ async function exportCostExcel() {
   const drumMap = { steelDrums: 0, peDrums: 0, ibcs: 0 };
 
   filtered.forEach((r) => {
-    const procNorm = normalizeProcessor(r.processor);
+    let procNorm = normalizeProcessor(r.processor);
     let carrierNorm = normalizeProcessor(r.carrier || "");
     const amount = r.amount || 0;
     const wasteName = r.wasteName || "";
     const phase = getPhaseFromWaste(wasteName);
     const classCode = getClassCode(wasteName);
 
-    // 1) 처리비 (유광드럼 제외)
+    // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
+    const isHaedongInNote = r.category && r.category.includes("해동이앤티");
+    const isWasteSolvent = (wasteName || "").includes("폐유기용제");
+    let transportPerTon;
+
+    if (isHaedongInNote) {
+      if (isWasteSolvent) {
+        // Case A: 폐유기용제 -> 해동이앤티가 다 함 (총 처리비)
+        procNorm = "해동이앤티";
+        transportPerTon = 0;
+      } else {
+        // Case B: 기타 -> 해동이앤티는 운반만
+        transportPerTon = 50000;
+        carrierNorm = "해동이앤티";
+      }
+    } else {
+      transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
+    }
+
+    // 2) 처리비 계산 (확정된 procNorm 기준)
     if (!procNorm.includes("유광드럼")) {
       const costPerTon = getProcessingCostPerTon(procNorm, wasteName);
       const pKey = `${procNorm}_${shortenWasteName(wasteName)}`;
@@ -2848,22 +2867,13 @@ async function exportCostExcel() {
       }
       procMap[pKey].amount += amount;
       procMap[pKey].cost += Math.round(costPerTon * amount);
-      // 비고에 category 정보 추가
       if (r.category && !procMap[pKey].note.includes(r.category)) {
         procMap[pKey].note = r.category;
       }
     }
 
-    // 2) 운반비 (해동이앤티 전용 특수 로직 우선 적용)
-    let transportPerTon;
-    if (r.category && r.category.includes("해동이앤티")) {
-      transportPerTon = 50000;
-      carrierNorm = "해동이앤티";
-    } else {
-      transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
-    }
-
-    if (transportPerTon > 0) {
+    // 3) 운반비 집계
+    if (transportPerTon > 0 || isHaedongInNote) {
       const tKey = `${carrierNorm}_${procNorm}_${r.category || ""}`;
       if (!transMap[tKey]) {
         transMap[tKey] = {
@@ -3014,24 +3024,35 @@ function calculateMonthlyCost(records) {
       monthlyMap[monthKey] = { processCost: 0, transportCost: 0, revenue: 0, details: [] };
     }
     const m = monthlyMap[monthKey];
-    const procNorm = normalizeProcessor(r.processor);
+    let procNorm = normalizeProcessor(r.processor);
     let carrierNorm = normalizeProcessor(r.carrier || "");
     const amount = r.amount || 0;
 
-    // 1) 처리비 계산
-    const costPerTon = getProcessingCostPerTon(procNorm, r.wasteName);
-    const processCost = Math.round(costPerTon * amount);
-
-    // 2) 운반비 계산 (해동이앤티 전용 특수 로직 우선 적용)
+    // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
+    const isHaedongInNote = r.category && r.category.includes("해동이앤티");
+    const isWasteSolvent = (r.wasteName || "").includes("폐유기용제");
     let transportPerTon, transportCost;
-    if (r.category && r.category.includes("해동이앤티")) {
-      transportPerTon = 50000;
-      transportCost = Math.round(transportPerTon * amount);
-      carrierNorm = "해동이앤티"; // 정산 업체를 해동이앤티로 강제 지정
+
+    if (isHaedongInNote) {
+      if (isWasteSolvent) {
+        // Case A: 폐유기용제 -> 해동이앤티가 운반+처리 일괄 (총 처리비용 전용)
+        procNorm = "해동이앤티"; 
+        transportPerTon = 0;
+        transportCost = 0;
+      } else {
+        // Case B: 기타(유해화학물질 액상 등) -> 해동이앤티는 운반만 (5만원/톤)
+        transportPerTon = 50000;
+        transportCost = Math.round(transportPerTon * amount);
+        carrierNorm = "해동이앤티";
+      }
     } else {
       transportPerTon = getTransportCostPerTon(carrierNorm, procNorm);
       transportCost = Math.round(transportPerTon * amount);
     }
+
+    // 2) 처리비 계산 (확정된 procNorm 기준)
+    const costPerTon = getProcessingCostPerTon(procNorm, r.wasteName);
+    const processCost = Math.round(costPerTon * amount);
 
     // 3) 잡이익 계산 (유광드럼인 경우)
     let revenue = 0;
