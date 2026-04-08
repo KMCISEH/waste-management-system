@@ -269,12 +269,14 @@ def import_from_csv(file_content: bytes):
     return _import_dataframe(df)
 
 def _import_dataframe(df):
-    """DataFrame 데이터를 DB에 병합 (중복 전표번호는 건너뜀)"""
+    """DataFrame 데이터를 DB에 병합 (사내시스템 로직 이식: 유연한 필드 매핑 및 Upsert 적용)"""
     conn = get_db_conn()
     cursor = conn.cursor()
+    # 컬럼명 공백 제거 및 줄바꿈 처리 (사내 로직 동일 적용)
     df.columns = [str(c).strip().replace('\n', ' ') for c in df.columns]
 
     def get_val(r, keys, default=''):
+        """사내시스템과 동일한 필드 추출 도우미"""
         for k in keys:
             v = r.get(k)
             if v is not None and pd.notnull(v):
@@ -287,35 +289,63 @@ def _import_dataframe(df):
 
     for idx, row in df.iterrows():
         try:
-            slip_no = str(get_val(row, [
+            # 1. 전표번호 (사내 매핑 키워드 적용)
+            raw_slip = get_val(row, [
                 'slip_no', '전표번호', '인계번호', '인계번호(*)',
                 '전자인계번호', '관리번호', 'No', 'no'
-            ])).strip()
-            if not slip_no or slip_no.lower() == 'nan' or slip_no == 'None':
+            ])
+            slip_no = str(raw_slip).strip() if pd.notnull(raw_slip) else ''
+            
+            if not slip_no or slip_no.lower() in ('nan', 'none', ''):
                 continue
 
-            processor = str(get_val(row, [
+            # 2. 처리업체
+            raw_proc = get_val(row, [
                 'processor', '처리업체', '처리자명', '처리업체명', '처리자명(*)'
-            ])).strip()
+            ])
+            processor = str(raw_proc).strip() if pd.notnull(raw_proc) else ''
 
-            category = str(get_val(row, ['category', '분류', '폐기물분류', '비고']))
-            if not category or category.lower() == 'nan' or category == '':
+            # 3. 카테고리/비고 (사내 로직: 업체명에 따른 자동 분류 포함)
+            raw_cat = get_val(row, ['category', '분류', '폐기물분류', '비고'])
+            category = str(raw_cat).strip() if pd.notnull(raw_cat) else ''
+            
+            if not category or category.lower() in ('nan', 'none', ''):
                 if '해동이앤티' in processor: category = "AO-Tar"
                 elif '제일자원' in processor: category = "AO-TAR"
                 elif '디에너지' in processor: category = "메탄올"
+            
+            # 4. 날짜 정규화 (사외시스템 안정성 강화)
+            raw_date = get_val(row, ['date', '날짜', '처리일', '인계일자', '인계일자(*)', '일자'])
+            if pd.isnull(raw_date):
+                continue
+                
+            formatted_date = str(raw_date).strip().split(' ')[0].replace('.', '-').replace('/', '-')
+            if len(formatted_date.split('-')) == 3:
+                y, m, d = formatted_date.split('-')
+                try:
+                    formatted_date = f"{y}-{int(m):02d}-{int(d):02d}"
+                except: pass
 
+            # 5. 수량 데이터 정제 (PostgreSQL REAL 타입 대응)
+            raw_amt = get_val(row, ['amount', '중량', '처리량', '처리량(톤)', '위탁량', '위탁량(*)', '수량'], 0)
+            try:
+                amount = float(raw_amt) if pd.notnull(raw_amt) else 0.0
+            except:
+                amount = 0.0
+
+            # 6. 데이터 패키징
             values = (
                 slip_no,
-                str(get_val(row, ['date', '날짜', '처리일', '인계일자', '인계일자(*)', '일자'])),
-                str(get_val(row, ['waste_type', '폐기물종류', '폐기물명', '폐기물종류(성상)', '폐기물종류(성상)(*)', '품명'])),
-                float(get_val(row, ['amount', '중량', '처리량', '처리량(톤)', '위탁량', '위탁량(*)', '수량'], 0)),
-                str(get_val(row, ['carrier', '운반업체', '운반자명', '운반업체명', '운반자명(*)'])),
-                str(get_val(row, ['vehicle_no', '차량번호', '차량 번호'])),
+                formatted_date,
+                str(get_val(row, ['waste_type', '폐기물종류', '폐기물명', '폐기물종류(성상)', '폐기물종류(성상)(*)', '품명'], '')),
+                amount,
+                str(get_val(row, ['carrier', '운반업체', '운반자명', '운반업체명', '운반자명(*)'], '')),
+                str(get_val(row, ['vehicle_no', '차량번호', '차량 번호'], '')),
                 processor,
-                str(get_val(row, ['note1', '비고1', '처리방법', '비고'])),
-                str(get_val(row, ['note2', '비고2'])),
+                str(get_val(row, ['note1', '비고1', '처리방법', '비고'], '')),
+                str(get_val(row, ['note2', '비고2'], '')),
                 category,
-                str(get_val(row, ['supplier', '공급업체', '장소'])),
+                str(get_val(row, ['supplier', '공급업체', '장소'], '공장')),
                 str(get_val(row, ['status'], 'completed'))
             )
 
@@ -323,17 +353,26 @@ def _import_dataframe(df):
             INSERT INTO records (slip_no, date, waste_type, amount, carrier, vehicle_no,
                                  processor, note1, note2, category, supplier, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (slip_no) DO UPDATE SET
+                date = EXCLUDED.date,
+                waste_type = EXCLUDED.waste_type,
+                amount = EXCLUDED.amount,
+                carrier = EXCLUDED.carrier,
+                vehicle_no = EXCLUDED.vehicle_no,
+                processor = EXCLUDED.processor,
+                note1 = EXCLUDED.note1,
+                note2 = EXCLUDED.note2,
+                category = EXCLUDED.category,
+                supplier = EXCLUDED.supplier,
+                status = EXCLUDED.status
             ''', values)
             added_count += 1
 
         except Exception as e:
             skipped_count += 1
-            if len(error_samples) < 3:
+            if len(error_samples) < 5:
                 error_samples.append(f"Row {idx}: {str(e)}")
 
     conn.commit()
     conn.close()
-    result = {"added": added_count, "skipped": skipped_count, "columns": list(df.columns)}
-    if error_samples:
-        result["error_samples"] = error_samples
-    return result
+    return {"added": added_count, "skipped": skipped_count, "columns": list(df.columns), "errors": error_samples}

@@ -502,13 +502,18 @@ async def upload_liquid_waste(file: UploadFile = File(...), x_admin_token: Optio
             amount_kg = float(amount) if amount else 0  # type: ignore
             quantity_ea = int(quantity) if quantity else 0  # type: ignore
             
+            # 팀명 통일 (사내시스템 로직: 품보팀 -> 품질보증팀)
+            normalized_team = str(team).strip()
+            if normalized_team == "품보팀":
+                normalized_team = "품질보증팀"
+            
             records.append({  # type: ignore
                 'year_month': str(year_month),
                 'discharge_date': discharge_date,
                 'receive_date': receive_date,
                 'waste_type': str(waste_type) if waste_type else '',
                 'content': str(content_val) if content_val else '',
-                'team': str(team).strip(),
+                'team': normalized_team,
                 'discharger': str(discharger) if discharger else '',
                 'quantity_ea': quantity_ea,
                 'amount_kg': amount_kg

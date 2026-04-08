@@ -2836,14 +2836,21 @@ async function exportCostExcel() {
     let procNorm = normalizeProcessor(r.processor);
     let carrierNorm = normalizeProcessor(r.carrier || "");
     const amount = r.amount || 0;
-    const wasteName = r.wasteName || "";
+    let wasteName = r.wasteName || "";
+
+    const noteStr = (r.category || "") + (r.note1 || "") + (r.note2 || "");
+    const isHaedongInNote = /해동이[앤엔]티/.test(noteStr);
+
+    // [v3.3] 하위항목 구분: 해동이앤티 운반 유해화학물질(액상)
+    if (isHaedongInNote && procNorm === "와이엔텍" && wasteName.includes("유해화학물질(액상)")) {
+      wasteName = wasteName + "(해동운반)";
+    }
+
     const phase = getPhaseFromWaste(wasteName);
     const classCode = getClassCode(wasteName);
 
     // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
-    const noteStr = (r.category || "") + (r.note1 || "") + (r.note2 || "");
-    const isHaedongInNote = /해동이[앤엔]티/.test(noteStr);
-    const isWasteSolvent = (wasteName || "").includes("폐유기용제");
+    const isWasteSolvent = wasteName.includes("폐유기용제");
     let transportPerTon;
 
     if (isHaedongInNote) {
@@ -2989,6 +2996,10 @@ function getProcessingCostPerTon(processorNorm, wasteName) {
       if (rates.default !== undefined) return rates.default;
       // 와이엔텍처럼 폐기물 종류별 단가
       const wn = (wasteName || "").toLowerCase();
+      
+      // [v3.3] 해동이앤티 운반 유해화학물질(액상) 45만원 단가 적용
+      if (wn.includes("해동운반") && wn.includes("액상")) return 450000;
+      
       if (wn.includes("폐유기용제")) return rates["폐유기용제"] || 0;
       if (wn.includes("고상") || wn.includes("고체")) return rates["고상"] || 0;
       if (wn.includes("액상") || wn.includes("액체")) return rates["액상"] || 0;
@@ -3038,11 +3049,18 @@ function calculateMonthlyCost(records) {
     let procNorm = normalizeProcessor(r.processor);
     let carrierNorm = normalizeProcessor(r.carrier || "");
     const amount = r.amount || 0;
+    let wasteName = r.wasteName || "";
 
-    // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
     const noteStr = (r.category || "") + (r.note1 || "") + (r.note2 || "");
     const isHaedongInNote = /해동이[앤엔]티/.test(noteStr);
-    const isWasteSolvent = (r.wasteName || "").includes("폐유기용제");
+
+    // [v3.3] 하위항목 구분: 해동이앤티 운반 유해화학물질(액상)
+    if (isHaedongInNote && procNorm === "와이엔텍" && wasteName.includes("유해화학물질(액상)")) {
+      wasteName = wasteName + "(해동운반)";
+    }
+
+    // 1) 업체명 및 운반비 단가 결정 (해동이앤티 전용 특수 로직 우선 적용)
+    const isWasteSolvent = wasteName.includes("폐유기용제");
     let transportPerTon, transportCost;
 
     if (isHaedongInNote) {
@@ -3063,7 +3081,8 @@ function calculateMonthlyCost(records) {
     }
 
     // 2) 처리비 계산 (확정된 procNorm 기준)
-    const costPerTon = getProcessingCostPerTon(procNorm, r.wasteName);
+    let costPerTon = getProcessingCostPerTon(procNorm, wasteName);
+    
     const processCost = Math.round(costPerTon * amount);
 
     // 3) 잡이익 계산 (유광드럼인 경우)
@@ -3083,7 +3102,7 @@ function calculateMonthlyCost(records) {
       date: r.date,
       processor: procNorm,
       carrier: carrierNorm,
-      wasteName: shortenWasteName(r.wasteName),
+      wasteName: shortenWasteName(wasteName),
       amount,
       category: r.category || "",
       processCost,
@@ -3305,7 +3324,18 @@ function renderCostPage() {
 
     processors.forEach((p) => {
       const subtotal = p.processCost + p.transportCost - p.revenue;
-      const wasteTypes = Object.values(p.byWaste).sort((a, b) => b.processCost - a.processCost);
+      const wasteTypes = Object.values(p.byWaste).sort((a, b) => {
+        // [v3.4] 유해화학물질(액상) 및 해동운반 항목을 최상단 1, 2번째로 고정 정렬
+        const aIsToxic = a.wasteName.includes("유해화학물질(액상)") ? 1 : 0;
+        const bIsToxic = b.wasteName.includes("유해화학물질(액상)") ? 1 : 0;
+        if (aIsToxic !== bIsToxic) {
+          return bIsToxic - aIsToxic;
+        }
+        if (aIsToxic && bIsToxic) {
+          return a.wasteName.length - b.wasteName.length; // 원본이 더 짧으므로 위로 오게 함
+        }
+        return b.processCost - a.processCost;
+      });
       const hasMultipleWastes = wasteTypes.length > 1;
 
       // 업체 헤더 행
