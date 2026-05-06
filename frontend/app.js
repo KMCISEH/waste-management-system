@@ -2480,6 +2480,7 @@ const LW_FIXED_TEAMS = [
   "연구1팀",
   "연구2팀",
   "연구3팀",
+  "기타",
 ];
 
 function renderLiquidWasteCharts(data, selectedMonth) {
@@ -2493,6 +2494,7 @@ function renderLiquidWasteCharts(data, selectedMonth) {
     "#06b6d4", // Cyan
     "#ec4899", // Pink
     "#f97316", // Orange
+    "#64748b", // Slate (기타)
   ];
   const textColor =
     getComputedStyle(document.documentElement)
@@ -2557,6 +2559,7 @@ function renderLiquidWasteCharts(data, selectedMonth) {
           },
           y: {
             beginAtZero: true,
+            max: 10,
             grid: { color: "rgba(100,116,139,0.1)" },
             ticks: { color: textColor, font: { size: 10 } },
             title: {
@@ -3175,12 +3178,14 @@ function renderCostPage() {
       bp.totalAmount += d.amount;
       bp.processCost += d.processCost;
       
-      // [v2.8] 운반비 분리 로직: 운반업체가 해동이앤티인 경우 별도 그룹으로 분리
-      if (d.carrier === "해동이앤티" && d.processor !== "해동이앤티") {
-        const hKey = "해동이앤티";
-        if (!byProcessor[hKey]) {
-          byProcessor[hKey] = {
-            processor: hKey,
+      // [v3.5] 운반비 분리 로직: 전용 운반업체(해동이앤티, 가야이앤티)는 별도 그룹으로 분리
+      const isTransportOnly = (d.carrier === "해동이앤티" && d.processor !== "해동이앤티") ||
+                              (d.carrier === "가야이앤티" && d.processor !== "가야이앤티");
+      if (isTransportOnly) {
+        const tKey = d.carrier; // 운반업체명을 키로 사용
+        if (!byProcessor[tKey]) {
+          byProcessor[tKey] = {
+            processor: tKey,
             totalAmount: 0,
             processCost: 0,
             transportCost: 0,
@@ -3190,11 +3195,14 @@ function renderCostPage() {
             byWaste: {},
           };
         }
-        const bhp = byProcessor[hKey];
+        const bhp = byProcessor[tKey];
         bhp.transportCost += d.transportCost;
         
-        // [v3.0] 해동이앤티 운반 전용 항목에도 수량과 단가 표시
-        const wKey = d.wasteName || "기타";
+        // 운반 전용 항목에도 수량과 단가 표시
+        // 가야이앤티는 목적지(처리업체)별로 하위항목 구분
+        const wKey = (d.carrier === "가야이앤티")
+          ? `${d.processor}행`
+          : (d.wasteName || "기타");
         if (!bhp.byWaste[wKey]) {
           bhp.byWaste[wKey] = {
             wasteName: wKey,
@@ -3311,10 +3319,16 @@ function renderCostPage() {
     <th style="text-align:right;">잡이익<br><small>(원)</small></th>
     <th style="text-align:right;">소계<br><small>(원)</small></th>
   </tr>`;
-  // 테이블 바디
-  const processors = Object.values(byProcessor).sort((a, b) =>
-    (b.processCost + b.transportCost) - (a.processCost + a.transportCost)
-  );
+  // [v3.5] 업체 고정 정렬 순서: 처리비(제일자원·디에너지 나란히) → 운반 → 잡이익
+  const PROCESSOR_ORDER = ["와이엔텍", "해동이앤티", "제일자원", "디에너지", "씨이케이", "가야이앤티", "유광드럼"];
+  const processors = Object.values(byProcessor).sort((a, b) => {
+    const aIdx = PROCESSOR_ORDER.findIndex(name => a.processor.includes(name));
+    const bIdx = PROCESSOR_ORDER.findIndex(name => b.processor.includes(name));
+    const aPri = aIdx >= 0 ? aIdx : 999;
+    const bPri = bIdx >= 0 ? bIdx : 999;
+    if (aPri !== bPri) return aPri - bPri;
+    return (b.processCost + b.transportCost) - (a.processCost + a.transportCost);
+  });
 
   if (processors.length === 0) {
     document.getElementById("costDetailBody").innerHTML =
