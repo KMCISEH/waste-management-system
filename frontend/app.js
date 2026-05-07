@@ -183,7 +183,15 @@ async function loadData() {
 }
 
 function initNavigation() {
-  document.querySelectorAll(".nav-item, [data-page]").forEach((item) => {
+  // 사이드바 + 기타 data-page 요소 (모바일 하단 네비 제외)
+  document.querySelectorAll(".nav-item[data-page], .btn-link[data-page]").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.preventDefault();
+      navigateTo(item.dataset.page);
+    });
+  });
+  // 모바일 하단 네비게이션 이벤트
+  document.querySelectorAll(".mobile-nav-item[data-page]").forEach((item) => {
     item.addEventListener("click", (e) => {
       e.preventDefault();
       navigateTo(item.dataset.page);
@@ -205,6 +213,11 @@ function navigateTo(page, updateHash = true) {
     el.classList.remove("active");
     if (el.dataset.page === page) el.classList.add("active");
   });
+  // 모바일 하단 네비게이션 active 동기화
+  document.querySelectorAll(".mobile-nav-item").forEach((el) => {
+    el.classList.remove("active");
+    if (el.dataset.page === page) el.classList.add("active");
+  });
 
   const titles = {
     dashboard: "대시보드",
@@ -215,14 +228,18 @@ function navigateTo(page, updateHash = true) {
     cost: "비용 정산",
   };
   const title = titles[page] || "지정폐기물 관리";
-  document.querySelector(
+  const breadcrumbEl = document.querySelector(
     ".header-left .breadcrumb span:last-child",
-  ).textContent = title;
+  );
+  if (breadcrumbEl) breadcrumbEl.textContent = title;
   document.title = `${title} | KMCI 안전환경팀`;
 
   if (updateHash) {
     window.location.hash = page;
   }
+
+  // 모바일에서 페이지 전환 시 사이드바 닫기
+  closeMobileSidebar();
 
   // 페이지별 초기화
   if (page === "schedule") {
@@ -263,11 +280,32 @@ function updateThemeIcon(theme) {
 }
 
 function initSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+
+  // 모바일 메뉴 버튼
   document
     .getElementById("mobileMenuBtn")
-    .addEventListener("click", () =>
-      document.getElementById("sidebar").classList.toggle("open"),
-    );
+    .addEventListener("click", () => {
+      sidebar.classList.toggle("open");
+      if (sidebar.classList.contains("open")) {
+        overlay.classList.add("active");
+      } else {
+        overlay.classList.remove("active");
+      }
+    });
+
+  // 오버레이 클릭 시 사이드바 닫기
+  if (overlay) {
+    overlay.addEventListener("click", closeMobileSidebar);
+  }
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  if (sidebar) sidebar.classList.remove("open");
+  if (overlay) overlay.classList.remove("active");
 }
 
 function updateCurrentDate() {
@@ -378,6 +416,12 @@ function renderDashboard() {
 
   if (pendingBadge) {
     pendingBadge.style.display = pendingCount > 0 ? "inline" : "none";
+  }
+  // 모바일 하단 네비게이션 배지 동기화
+  const mobileBadge = document.getElementById("mobilePendingBadge");
+  if (mobileBadge) {
+    mobileBadge.textContent = pendingCount;
+    mobileBadge.style.display = pendingCount > 0 ? "inline" : "none";
   }
 
   // 월별 차트는 연간 보기일 때만 의미가 있으므로, 특정 월 선택 시 일별 차트로 변경하거나 그대로 둠
